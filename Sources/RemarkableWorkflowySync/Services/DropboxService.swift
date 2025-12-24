@@ -233,6 +233,77 @@ final class DropboxService: @unchecked Sendable {
             lastModified: modifiedDate
         )
     }
+    
+    func createFolder(path: String, autorename: Bool = false) async throws -> DropboxFile {
+        let createURL = "\(baseURL)/files/create_folder_v2"
+        
+        let createArgs: [String: Any] = [
+            "path": path,
+            "autorename": autorename
+        ]
+        
+        let response = try await AF.request(
+            createURL,
+            method: .post,
+            parameters: createArgs,
+            encoding: JSONEncoding.default,
+            headers: [
+                "Authorization": "Bearer \(accessToken)",
+                "Content-Type": "application/json"
+            ]
+        ).serializingData().value
+        
+        let json = try JSON(data: response)
+        
+        // Handle potential errors
+        if json["error"].exists() {
+            let errorTag = json["error"][".tag"].string
+            if errorTag == "path" {
+                let pathError = json["error"]["path"][".tag"].string
+                if pathError == "conflict" {
+                    throw DropboxError.folderAlreadyExists
+                }
+            }
+            throw DropboxError.createFolderFailed
+        }
+        
+        // Parse the folder metadata from response
+        guard let metadata = json["metadata"].dictionary else {
+            throw DropboxError.createFolderFailed
+        }
+        
+        let folderJson = JSON(metadata)
+        guard let folderInfo = parseDropboxFile(from: folderJson) else {
+            throw DropboxError.createFolderFailed
+        }
+        
+        return folderInfo
+    }
+    
+    func ensureFolderExists(path: String) async throws -> DropboxFile {
+        // Normalize path to ensure it starts with /
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        
+        // Try to get folder info directly first
+        let parentPath = (normalizedPath as NSString).deletingLastPathComponent
+        let folderName = (normalizedPath as NSString).lastPathComponent
+        
+        do {
+            let files = try await listFiles(path: parentPath.isEmpty ? "/" : parentPath)
+            
+            if let existingFolder = files.first(where: { $0.name == folderName && $0.isFolder }) {
+                print("📁 Folder '\(normalizedPath)' already exists")
+                return existingFolder
+            }
+        } catch {
+            // If listing fails, continue to try creating the folder
+            print("⚠️ Could not list parent directory, attempting to create folder")
+        }
+        
+        // Folder doesn't exist, create it
+        print("📁 Creating folder '\(normalizedPath)'")
+        return try await createFolder(path: normalizedPath)
+    }
 }
 
 struct DropboxFile {
@@ -250,6 +321,8 @@ enum DropboxError: Error, LocalizedError {
     case deleteFailed
     case listFailed
     case authenticationFailed
+    case createFolderFailed
+    case folderAlreadyExists
     case networkError(String)
     
     var errorDescription: String? {
@@ -266,6 +339,10 @@ enum DropboxError: Error, LocalizedError {
             return "Failed to list files from Dropbox"
         case .authenticationFailed:
             return "Dropbox authentication failed"
+        case .createFolderFailed:
+            return "Failed to create folder in Dropbox"
+        case .folderAlreadyExists:
+            return "Folder already exists in Dropbox"
         case .networkError(let message):
             return "Network error: \(message)"
         }

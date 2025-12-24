@@ -16,6 +16,24 @@ struct RemarkableDocument: Identifiable, Codable {
     }
 }
 
+struct RemarkableFolder: Identifiable, Codable {
+    let id: String
+    let name: String
+    let parentId: String?
+    var children: [RemarkableFolder]
+    var documents: [RemarkableDocument]
+    var isExpanded: Bool = false
+    var isSelected: Bool = false
+    
+    init(id: String, name: String, parentId: String? = nil, children: [RemarkableFolder] = [], documents: [RemarkableDocument] = []) {
+        self.id = id
+        self.name = name
+        self.parentId = parentId
+        self.children = children
+        self.documents = documents
+    }
+}
+
 struct WorkflowyNode: Identifiable, Codable {
     let id: String
     let name: String

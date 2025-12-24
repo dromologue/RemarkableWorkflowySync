@@ -74,7 +74,16 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 16) {
             statusSection
             
-            documentsSection
+            // Show different content based on authentication status
+            if viewModel.workflowyConnectionStatus == .connected {
+                workflowySection
+            }
+            
+            if viewModel.remarkableConnectionStatus == .connected {
+                remarkableFoldersSection
+            } else {
+                documentsSection
+            }
             
             Spacer()
         }
@@ -157,6 +166,84 @@ struct MainView: View {
         }
     }
     
+    private var workflowySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Workflowy Outline")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if viewModel.isLoadingWorkflowy {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            
+            if !viewModel.workflowyNodes.isEmpty {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(viewModel.workflowyNodes, id: \.id) { node in
+                            WorkflowyNodeView(node: node, depth: 0)
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            } else if viewModel.workflowyConnectionStatus == .connected && !viewModel.isLoadingWorkflowy {
+                Text("No Workflowy nodes found")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+        }
+    }
+    
+    private var remarkableFoldersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Remarkable Folders")
+                    .font(.headline)
+                
+                Spacer()
+                
+                Button("Select All") {
+                    // Toggle select all folders
+                    if viewModel.selectedFolders.isEmpty {
+                        selectAllFolders(viewModel.remarkableFolders)
+                    } else {
+                        viewModel.selectedFolders.removeAll()
+                    }
+                }
+                .font(.caption)
+            }
+            
+            if !viewModel.remarkableFolders.isEmpty {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(viewModel.remarkableFolders, id: \.id) { folder in
+                            RemarkableFolderView(
+                                folder: folder,
+                                selectedFolders: $viewModel.selectedFolders,
+                                onToggleSelection: viewModel.toggleFolderSelection
+                            )
+                        }
+                    }
+                }
+                .frame(maxHeight: 400)
+                
+                if !viewModel.selectedFolders.isEmpty {
+                    Text("\(viewModel.selectedFolders.count) folders selected for sync")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                        .padding(.top, 4)
+                }
+            } else if viewModel.remarkableConnectionStatus == .connected && !viewModel.isLoading {
+                Text("No folders found")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+        }
+    }
+    
     private var detailView: some View {
         VStack {
             if viewModel.selectedDocuments.isEmpty {
@@ -196,6 +283,13 @@ struct MainView: View {
     private var needsAPISetup: Bool {
         let settings = AppSettings.load()
         return settings.remarkableDeviceToken.isEmpty || settings.workflowyApiKey.isEmpty
+    }
+    
+    private func selectAllFolders(_ folders: [RemarkableFolder]) {
+        for folder in folders {
+            viewModel.selectedFolders.insert(folder.id)
+            selectAllFolders(folder.children)
+        }
     }
 }
 
@@ -243,6 +337,167 @@ struct DocumentRowView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
+
+struct WorkflowyNodeView: View {
+    let node: WorkflowyNode
+    let depth: Int
+    @State private var isExpanded: Bool = true
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                // Indentation based on depth
+                ForEach(0..<depth, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 20, height: 1)
+                }
+                
+                // Expand/collapse button for nodes with children
+                if let children = node.children, !children.isEmpty {
+                    Button(action: {
+                        isExpanded.toggle()
+                    }) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 16, height: 16)
+                }
+                
+                // Node content
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(node.name.isEmpty ? "Untitled" : node.name)
+                        .font(.system(.body, design: .default))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    if let note = node.note, !note.isEmpty {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            
+            // Show children if expanded
+            if isExpanded, let children = node.children, !children.isEmpty {
+                ForEach(children, id: \.id) { child in
+                    WorkflowyNodeView(node: child, depth: depth + 1)
+                }
+            }
+        }
+    }
+}
+
+struct RemarkableFolderView: View {
+    let folder: RemarkableFolder
+    @Binding var selectedFolders: Set<String>
+    let onToggleSelection: (String) -> Void
+    @State private var isExpanded: Bool = false
+    
+    var isSelected: Bool {
+        selectedFolders.contains(folder.id)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                // Expand/collapse button for folders with children
+                if !folder.children.isEmpty || !folder.documents.isEmpty {
+                    Button(action: {
+                        isExpanded.toggle()
+                    }) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 16, height: 16)
+                }
+                
+                // Selection checkbox
+                Button(action: {
+                    onToggleSelection(folder.id)
+                }) {
+                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                        .foregroundColor(isSelected ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                
+                // Folder icon and name
+                Image(systemName: "folder.fill")
+                    .foregroundColor(.blue)
+                    .font(.caption)
+                
+                Text(folder.name)
+                    .font(.body)
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                // Document count
+                if !folder.documents.isEmpty {
+                    Text("\(folder.documents.count)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.2))
+                        .cornerRadius(8)
+                }
+            }
+            .padding(.vertical, 2)
+            
+            // Show children and documents if expanded
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 2) {
+                    // Show child folders
+                    ForEach(folder.children, id: \.id) { childFolder in
+                        RemarkableFolderView(
+                            folder: childFolder,
+                            selectedFolders: $selectedFolders,
+                            onToggleSelection: onToggleSelection
+                        )
+                        .padding(.leading, 20)
+                    }
+                    
+                    // Show documents in folder
+                    ForEach(folder.documents, id: \.id) { document in
+                        HStack {
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(width: 36, height: 1)
+                            
+                            Image(systemName: document.isPDF ? "doc.fill" : "note.text")
+                                .foregroundColor(document.isPDF ? .red : .gray)
+                                .font(.caption)
+                            
+                            Text(document.name)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                            
+                            Spacer()
+                        }
+                        .padding(.vertical, 1)
+                    }
+                }
+            }
+        }
     }
 }
 

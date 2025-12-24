@@ -116,10 +116,13 @@ class SyncService: ObservableObject {
         }
         
         // Upload to Dropbox for link sharing
+        // Ensure the "Remarkable Synch" folder exists
+        _ = try await dropboxService.ensureFolderExists(path: "/Remarkable Synch")
+        
         dropboxLink = try await dropboxService.uploadFile(
             data: pdfData,
             fileName: "\(document.name).pdf",
-            path: "/RemarkableSync"
+            path: "/Remarkable Synch"
         )
         
         // Use new Workflowy integration with Remarkable folder structure

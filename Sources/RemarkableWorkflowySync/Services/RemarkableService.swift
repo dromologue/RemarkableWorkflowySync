@@ -201,6 +201,31 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
         return documents.sorted { $0.lastModified > $1.lastModified }
     }
     
+    /// Fetch folder structure with documents organized hierarchically
+    func fetchFolderStructure() async throws -> [RemarkableFolder] {
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
+        }
+        
+        let storageURL = storageHost ?? defaultStorageURL
+        let documentsURL = "\(storageURL)/document-storage/json/2/docs"
+        
+        let response = try await AF.request(
+            documentsURL,
+            method: .get,
+            headers: ["Authorization": "Bearer \(token)"]
+        ).serializingData().value
+        
+        let json = try JSON(data: response)
+        
+        var allItems: [JSON] = []
+        for (_, item) in json {
+            allItems.append(item)
+        }
+        
+        return buildFolderStructure(from: allItems)
+    }
+    
     func downloadDocument(id: String) async throws -> Data {
         guard let token = bearerToken else {
             throw RemarkableError.authenticationFailed
@@ -382,6 +407,106 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
         _ = try await AF.request(metadataRequest).serializingData().value
         
         return folderId
+    }
+    
+    private func buildFolderStructure(from items: [JSON]) -> [RemarkableFolder] {
+        // Parse all items into documents and folders
+        var documents: [RemarkableDocument] = []
+        var folderData: [String: (name: String, parentId: String?)] = [:]
+        
+        for item in items {
+            guard let id = item["ID"].string,
+                  let name = item["VissibleName"].string,
+                  let type = item["Type"].string else {
+                continue
+            }
+            
+            let parentId = item["Parent"].string
+            let cleanParentId = (parentId?.isEmpty == false) ? parentId : nil
+            
+            if type == "CollectionType" {
+                // This is a folder
+                folderData[id] = (name: name, parentId: cleanParentId)
+            } else if let document = parseDocument(from: item) {
+                // This is a document
+                documents.append(document)
+            }
+        }
+        
+        // Build folder hierarchy
+        var folderMap: [String: RemarkableFolder] = [:]
+        
+        // Create all folders first
+        for (folderId, folderInfo) in folderData {
+            let folder = RemarkableFolder(
+                id: folderId,
+                name: folderInfo.name,
+                parentId: folderInfo.parentId,
+                children: [],
+                documents: []
+            )
+            folderMap[folderId] = folder
+        }
+        
+        // Organize documents into their parent folders
+        for document in documents {
+            if let parentId = document.parentId,
+               var parentFolder = folderMap[parentId] {
+                parentFolder.documents.append(document)
+                folderMap[parentId] = parentFolder
+            }
+        }
+        
+        // Build parent-child relationships for folders
+        var rootFolders: [RemarkableFolder] = []
+        
+        for (_, folder) in folderMap {
+            if let parentId = folder.parentId,
+               var parentFolder = folderMap[parentId] {
+                parentFolder.children.append(folder)
+                folderMap[parentId] = parentFolder
+            } else {
+                // This is a root folder
+                rootFolders.append(folder)
+            }
+        }
+        
+        // Update the folderMap with the built hierarchy
+        for rootFolder in rootFolders {
+            updateFolderInMap(&folderMap, folder: rootFolder)
+        }
+        
+        // Create a root folder for documents without a parent folder
+        let documentsWithoutParent = documents.filter { document in
+            document.parentId == nil || folderMap[document.parentId!] == nil
+        }
+        
+        if !documentsWithoutParent.isEmpty || rootFolders.isEmpty {
+            let rootFolder = RemarkableFolder(
+                id: "root",
+                name: "My Files",
+                parentId: nil,
+                children: rootFolders,
+                documents: documentsWithoutParent
+            )
+            return [rootFolder]
+        }
+        
+        return rootFolders.sorted { $0.name < $1.name }
+    }
+    
+    private func updateFolderInMap(_ folderMap: inout [String: RemarkableFolder], folder: RemarkableFolder) {
+        var updatedFolder = folder
+        
+        // Update children recursively
+        for (index, child) in folder.children.enumerated() {
+            if let updatedChild = folderMap[child.id] {
+                updatedFolder.children[index] = updatedChild
+                updateFolderInMap(&folderMap, folder: updatedChild)
+            }
+        }
+        
+        folderMap[folder.id] = updatedFolder
     }
     
     private func parseDocument(from json: JSON) -> RemarkableDocument? {

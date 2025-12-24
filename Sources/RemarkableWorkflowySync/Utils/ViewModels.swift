@@ -9,6 +9,16 @@ class MainViewModel: ObservableObject {
     @Published var syncStatus: SyncStatus = .idle
     @Published var isLoading = false
     
+    // Workflowy data
+    @Published var workflowyNodes: [WorkflowyNode] = []
+    @Published var workflowyConnectionStatus: ConnectionStatus = .unknown
+    @Published var isLoadingWorkflowy = false
+    
+    // Remarkable folder structure
+    @Published var remarkableFolders: [RemarkableFolder] = []
+    @Published var selectedFolders: Set<String> = []
+    @Published var remarkableConnectionStatus: ConnectionStatus = .unknown
+    
     @MainActor private let syncService = SyncService()
     private let settings = AppSettings.load()
     private var cancellables = Set<AnyCancellable>()
@@ -26,6 +36,8 @@ class MainViewModel: ObservableObject {
     
     func loadInitialData() async {
         await refreshDocuments()
+        await loadWorkflowyData()
+        await loadRemarkableFolders()
         
         if settings.enableBackgroundSync {
             syncService.startBackgroundSync()
@@ -76,6 +88,104 @@ class MainViewModel: ObservableObject {
             print("❌ Failed to sync Workflowy outline: \(error.localizedDescription)")
             // Show error to user via syncStatus
             syncStatus = .error(error.localizedDescription)
+        }
+    }
+    
+    func loadWorkflowyData() async {
+        guard !settings.workflowyApiKey.isEmpty else {
+            workflowyConnectionStatus = .failed("No API key")
+            return
+        }
+        
+        isLoadingWorkflowy = true
+        defer { isLoadingWorkflowy = false }
+        
+        do {
+            let workflowyService = WorkflowyService(
+                apiKey: settings.workflowyApiKey,
+                username: settings.workflowyUsername.isEmpty ? nil : settings.workflowyUsername
+            )
+            
+            // Test connection first
+            let isConnected = try await workflowyService.validateConnection()
+            if isConnected {
+                workflowyConnectionStatus = .connected
+                
+                // Fetch nodes (limited to 3 levels deep)
+                let allNodes = try await workflowyService.fetchRootNodes()
+                workflowyNodes = limitNodeDepth(allNodes, maxDepth: 3)
+                
+                print("✅ Loaded \(workflowyNodes.count) root Workflowy nodes")
+            } else {
+                workflowyConnectionStatus = .failed("Connection failed")
+            }
+        } catch {
+            workflowyConnectionStatus = .failed(error.localizedDescription)
+            print("❌ Failed to load Workflowy data: \(error)")
+        }
+    }
+    
+    func loadRemarkableFolders() async {
+        guard !settings.remarkableDeviceToken.isEmpty else {
+            remarkableConnectionStatus = .failed("No device token")
+            return
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let remarkableService = RemarkableService()
+            
+            // Test connection first
+            let isConnected = try await remarkableService.validateConnection()
+            if isConnected {
+                remarkableConnectionStatus = .connected
+                
+                // Fetch folder structure
+                remarkableFolders = try await remarkableService.fetchFolderStructure()
+                
+                print("✅ Loaded Remarkable folder structure with \(remarkableFolders.count) root folders")
+            } else {
+                remarkableConnectionStatus = .failed("Connection failed")
+            }
+        } catch {
+            remarkableConnectionStatus = .failed(error.localizedDescription)
+            print("❌ Failed to load Remarkable folders: \(error)")
+        }
+    }
+    
+    func toggleFolderSelection(_ folderId: String) {
+        if selectedFolders.contains(folderId) {
+            selectedFolders.remove(folderId)
+        } else {
+            selectedFolders.insert(folderId)
+        }
+    }
+    
+    private func limitNodeDepth(_ nodes: [WorkflowyNode], maxDepth: Int, currentDepth: Int = 0) -> [WorkflowyNode] {
+        guard currentDepth < maxDepth else { return [] }
+        
+        return nodes.map { node in
+            var limitedNode = node
+            if let children = node.children, currentDepth < maxDepth - 1 {
+                limitedNode = WorkflowyNode(
+                    id: node.id,
+                    name: node.name,
+                    note: node.note,
+                    parentId: node.parentId,
+                    children: limitNodeDepth(children, maxDepth: maxDepth, currentDepth: currentDepth + 1)
+                )
+            } else {
+                limitedNode = WorkflowyNode(
+                    id: node.id,
+                    name: node.name,
+                    note: node.note,
+                    parentId: node.parentId,
+                    children: nil // Cut off at max depth
+                )
+            }
+            return limitedNode
         }
     }
 }

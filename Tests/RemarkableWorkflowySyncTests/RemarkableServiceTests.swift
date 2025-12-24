@@ -113,6 +113,19 @@ final class RemarkableServiceTests: XCTestCase {
         }
     }
     
+    func testFetchFolderStructureWithoutAuth() async throws {
+        // Given: Service without authentication
+        
+        // When: Attempting to fetch folder structure
+        do {
+            _ = try await remarkableService.fetchFolderStructure()
+            XCTFail("Should fail to fetch folder structure without authentication")
+        } catch let error as RemarkableError {
+            // Then: Should fail with authentication error
+            XCTAssertEqual(error, .authenticationFailed, "Should fail with authentication error")
+        }
+    }
+    
     func testDownloadDocumentWithoutAuth() async throws {
         // Given: Service without authentication and document ID
         let documentId = "test-document-123"
@@ -316,39 +329,74 @@ final class RemarkableServiceTests: XCTestCase {
         } catch {
             // Expected failure
         }
+        
+        // Step 3: Try to fetch folder structure (will also fail)
+        do {
+            let folders = try await remarkableService.fetchFolderStructure()
+            XCTFail("Should fail without auth, but if it succeeds, folders should be valid: \(folders)")
+        } catch {
+            // Expected failure
+        }
+    }
+    
+    func testFolderStructureApiCompatibility() async throws {
+        // Test that the folder structure API matches expected behavior
+        
+        // This tests the API signature and error handling
+        do {
+            let folders = try await remarkableService.fetchFolderStructure()
+            
+            // If this succeeds (authenticated), verify the structure
+            for folder in folders {
+                XCTAssertFalse(folder.id.isEmpty, "Folder should have valid ID")
+                XCTAssertFalse(folder.name.isEmpty, "Folder should have valid name")
+                
+                // Verify children are properly nested
+                for childFolder in folder.children {
+                    XCTAssertEqual(childFolder.parentId, folder.id, "Child folder should reference parent")
+                }
+                
+                // Verify documents in folder
+                for document in folder.documents {
+                    if let parentId = document.parentId {
+                        XCTAssertEqual(parentId, folder.id, "Document should reference parent folder")
+                    }
+                }
+            }
+        } catch let error as RemarkableError {
+            // Expected to fail due to authentication
+            XCTAssertEqual(error, .authenticationFailed, "Should fail with authentication error")
+        }
     }
     
     // MARK: - Performance Tests
     
-    func testMultipleFolderCreationPerformance() {
+    func testMultipleFolderCreationPerformance() async throws {
         // Test creating multiple folders in sequence
         let folderNames = ["Folder1", "Folder2", "Folder3", "WORKFLOWY", "TestFolder"]
         
-        measure {
-            Task {
-                for folderName in folderNames {
-                    do {
-                        _ = try await remarkableService.createFolder(name: folderName)
-                    } catch {
-                        // Expected to fail, but should fail quickly
-                    }
-                }
+        // Test that multiple folder creation attempts handle failures gracefully
+        for folderName in folderNames {
+            do {
+                _ = try await remarkableService.createFolder(name: folderName)
+                XCTFail("Should fail without authentication")
+            } catch let error as RemarkableError {
+                // Expected to fail with authentication error
+                XCTAssertEqual(error, .authenticationFailed, "Should fail with authentication error")
             }
         }
     }
     
-    func testLargePDFUploadPerformance() {
+    func testLargePDFUploadHandling() async throws {
         // Test uploading larger PDF data
         let largePDFData = createLargeTestPDFData()
         
-        measure {
-            Task {
-                do {
-                    _ = try await remarkableService.uploadPDF(data: largePDFData, name: "LargeTest.pdf")
-                } catch {
-                    // Expected to fail due to auth, but should handle large data efficiently
-                }
-            }
+        do {
+            _ = try await remarkableService.uploadPDF(data: largePDFData, name: "LargeTest.pdf")
+            XCTFail("Should fail without authentication")
+        } catch let error as RemarkableError {
+            // Expected to fail with authentication error, but should handle large data efficiently
+            XCTAssertEqual(error, .authenticationFailed, "Should fail with authentication error")
         }
     }
     
