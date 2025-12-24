@@ -11,16 +11,49 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
     }
     
     func validateConnection() async throws -> Bool {
-        let url = "\(baseURL)/user/get"
+        // Try multiple Workflowy endpoints since the API structure is not well documented
+        let endpoints = [
+            "https://workflowy.com/get_initialization_data",
+            "\(baseURL)/get_initialization_data", 
+            "https://workflowy.com/api/beta/get-initialization-data"
+        ]
         
-        let response = try await AF.request(
-            url,
-            method: .get,
-            headers: ["Authorization": "Bearer \(apiKey)"]
-        ).serializingData().value
+        for endpoint in endpoints {
+            do {
+                let response = try await AF.request(
+                    endpoint,
+                    method: .get,
+                    parameters: ["api_key": apiKey],
+                    headers: [
+                        "Content-Type": "application/json",
+                        "User-Agent": "RemarkableWorkflowySync/1.0"
+                    ]
+                ).serializingData().value
+                
+                let json = try JSON(data: response)
+                
+                // Check for valid response indicators
+                if json["user"].exists() || 
+                   json["projectTreeData"].exists() ||
+                   json["settings"].exists() ||
+                   (json["success"].bool == true) {
+                    return true
+                }
+                
+                // Check if it's an auth error vs endpoint error
+                if let error = json["error"].string?.lowercased() {
+                    if error.contains("invalid") || error.contains("unauthorized") {
+                        return false // Invalid API key
+                    }
+                }
+                
+            } catch {
+                // Try next endpoint
+                continue
+            }
+        }
         
-        let json = try JSON(data: response)
-        return json["success"].boolValue
+        return false // All endpoints failed
     }
     
     func fetchRootNodes() async throws -> [WorkflowyNode] {

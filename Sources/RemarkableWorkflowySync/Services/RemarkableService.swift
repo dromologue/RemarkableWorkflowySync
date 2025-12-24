@@ -13,6 +13,11 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
     }
     
     func authenticate() async throws {
+        // Validate token format first
+        if deviceToken.count < 20 {
+            throw RemarkableError.invalidToken("Device token '\(deviceToken)' is too short. Get a valid token from https://remarkable.com/device/desktop/connect")
+        }
+        
         let authURL = "https://webapp-production-dot-remarkable-production.appspot.com/token/json/2/user/new"
         
         let parameters: [String: Any] = [
@@ -133,6 +138,7 @@ enum RemarkableError: Error, LocalizedError {
     case invalidResponse
     case documentNotFound
     case networkError(String)
+    case invalidToken(String)
     
     var errorDescription: String? {
         switch self {
@@ -142,6 +148,8 @@ enum RemarkableError: Error, LocalizedError {
             return "Received invalid response from Remarkable service"
         case .documentNotFound:
             return "Document not found"
+        case .invalidToken(let message):
+            return message
         case .networkError(let message):
             return "Network error: \(message)"
         }

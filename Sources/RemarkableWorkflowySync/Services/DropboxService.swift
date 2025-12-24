@@ -14,12 +14,12 @@ final class DropboxService: @unchecked Sendable {
     func validateConnection() async throws -> Bool {
         let url = "\(baseURL)/users/get_current_account"
         
+        // Dropbox API expects null body, not JSON content
         let response = try await AF.request(
             url,
             method: .post,
             headers: [
-                "Authorization": "Bearer \(accessToken)",
-                "Content-Type": "application/json"
+                "Authorization": "Bearer \(accessToken)"
             ]
         ).serializingData().value
         
@@ -30,12 +30,12 @@ final class DropboxService: @unchecked Sendable {
     func getAccountInfo() async throws {
         let url = "\(baseURL)/users/get_current_account"
         
+        // Dropbox API expects null body, not JSON
         let response = try await AF.request(
             url,
             method: .post,
             headers: [
-                "Authorization": "Bearer \(accessToken)",
-                "Content-Type": "application/json"
+                "Authorization": "Bearer \(accessToken)"
             ]
         ).serializingData().value
         
