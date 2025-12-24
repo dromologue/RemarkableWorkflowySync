@@ -54,6 +54,8 @@ struct MainView: View {
                 onSave: {
                     Task {
                         await viewModel.refreshDocuments()
+                        await viewModel.loadWorkflowyData()
+                        await viewModel.loadRemarkableFolders()
                     }
                 },
                 isFirstTimeSetup: isFirstTimeSetup
@@ -74,15 +76,24 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 16) {
             statusSection
             
-            // Show different content based on authentication status
+            // Show Workflowy section when connected
             if viewModel.workflowyConnectionStatus == .connected {
                 workflowySection
             }
             
+            // Show Remarkable folders section when connected
             if viewModel.remarkableConnectionStatus == .connected {
                 remarkableFoldersSection
-            } else {
+            }
+            
+            // Show documents section (fallback for when not connected to folders view)
+            if viewModel.remarkableConnectionStatus != .connected {
                 documentsSection
+            }
+            
+            // Show sync configuration when both services are connected
+            if viewModel.workflowyConnectionStatus == .connected && viewModel.remarkableConnectionStatus == .connected {
+                syncConfigurationSection
             }
             
             Spacer()
@@ -289,6 +300,31 @@ struct MainView: View {
         for folder in folders {
             viewModel.selectedFolders.insert(folder.id)
             selectAllFolders(folder.children)
+        }
+    }
+    
+    private var syncConfigurationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Sync Direction")
+                    .font(.headline)
+                
+                Spacer()
+            }
+            
+            Picker("Sync Direction", selection: $viewModel.selectedSyncDirection) {
+                ForEach(SyncPair.SyncDirection.allCases, id: \.self) { direction in
+                    Text(direction.displayName)
+                        .tag(direction)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Choose how documents should sync between Remarkable and Workflowy")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

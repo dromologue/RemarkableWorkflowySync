@@ -19,6 +19,9 @@ class MainViewModel: ObservableObject {
     @Published var selectedFolders: Set<String> = []
     @Published var remarkableConnectionStatus: ConnectionStatus = .unknown
     
+    // Sync configuration
+    @Published var selectedSyncDirection: SyncPair.SyncDirection = .bidirectional
+    
     @MainActor private let syncService = SyncService()
     private let settings = AppSettings.load()
     private var cancellables = Set<AnyCancellable>()
