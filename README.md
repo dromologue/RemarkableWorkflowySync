@@ -36,7 +36,7 @@ A macOS application that provides seamless synchronization between your Remarkab
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/dromologue/RemarkableWorkflowySync.git
    cd RemarkableWorkflowySync
    ```
 
