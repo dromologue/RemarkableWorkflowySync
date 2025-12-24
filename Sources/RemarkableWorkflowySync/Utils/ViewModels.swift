@@ -37,7 +37,7 @@ class MainViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            let remarkableService = RemarkableService(deviceToken: settings.remarkableDeviceToken)
+            let remarkableService = RemarkableService()
             documents = try await remarkableService.fetchDocuments()
         } catch {
             print("Failed to load documents: \(error)")
@@ -64,11 +64,26 @@ class MainViewModel: ObservableObject {
             selectedDocuments = Set(documents.map(\.id))
         }
     }
+    
+    func syncWorkflowyToRemarkable() async {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            try await syncService.syncCompleteWorkflowyOutline()
+            print("✅ Successfully synced Workflowy outline to Remarkable")
+        } catch {
+            print("❌ Failed to sync Workflowy outline: \(error.localizedDescription)")
+            // Show error to user via syncStatus
+            syncStatus = .error(error.localizedDescription)
+        }
+    }
 }
 
 @MainActor
 class SettingsViewModel: ObservableObject {
     @Published var remarkableDeviceToken = ""
+    @Published var remarkableRegistrationCode = ""
     @Published var workflowyApiKey = ""
     @Published var dropboxAccessToken = ""
     @Published var syncInterval: TimeInterval = 3600
@@ -120,15 +135,112 @@ class SettingsViewModel: ObservableObject {
     }
     
     func testRemarkableConnection() async {
+        // If we only have a registration code, prompt user to register first
+        if remarkableDeviceToken.isEmpty && !remarkableRegistrationCode.isEmpty {
+            remarkableConnectionStatus = .failed("Please register device first using the registration code")
+            return
+        }
+        
+        guard !remarkableDeviceToken.isEmpty else {
+            remarkableConnectionStatus = .failed("No bearer token available. Please register device first.")
+            return
+        }
+        
         isTestingConnection = true
         defer { isTestingConnection = false }
         
         do {
-            let service = RemarkableService(deviceToken: remarkableDeviceToken)
-            try await service.authenticate()
-            remarkableConnectionStatus = .connected
+            let service = RemarkableService()
+            let isValid = try await service.validateConnection()
+            remarkableConnectionStatus = isValid ? .connected : .failed("Authentication failed")
         } catch {
             remarkableConnectionStatus = .failed(error.localizedDescription)
+        }
+    }
+    
+    func registerRemarkableDevice() async {
+        guard remarkableRegistrationCode.count == 8 else {
+            remarkableConnectionStatus = .failed("Registration code must be exactly 8 characters")
+            return
+        }
+        
+        isTestingConnection = true
+        defer { isTestingConnection = false }
+        
+        do {
+            let service = RemarkableService()
+            let bearerToken = try await service.registerDevice(code: remarkableRegistrationCode)
+            
+            // Replace the registration code with the bearer token
+            remarkableDeviceToken = bearerToken
+            remarkableRegistrationCode = "" // Clear the registration code
+            remarkableConnectionStatus = .connected
+            
+            // Update the api-tokens.md file with the new bearer token
+            await updateTokenInFile(newToken: bearerToken)
+            
+            // Save settings with the bearer token
+            saveSettings()
+            
+            print("✅ Device registered successfully. Bearer token saved.")
+        } catch {
+            remarkableConnectionStatus = .failed(error.localizedDescription)
+            print("❌ Registration failed: \(error.localizedDescription)")
+        }
+    }
+    
+    private func updateTokenInFile(newToken: String) async {
+        guard let projectRoot = APITokenParser.shared.findProjectRoot() else {
+            print("Could not find project root to update token file")
+            return
+        }
+        
+        let tokensFilePath = projectRoot.appendingPathComponent("api-tokens.md")
+        
+        do {
+            let content = try String(contentsOf: tokensFilePath, encoding: .utf8)
+            
+            // Find and replace the remarkable token section
+            let lines = content.components(separatedBy: CharacterSet.newlines)
+            var newLines: [String] = []
+            var inRemarkableSection = false
+            let inCodeBlock = false
+            var skipNextLines = 0
+            
+            for line in lines {
+                if skipNextLines > 0 {
+                    skipNextLines -= 1
+                    continue
+                }
+                
+                if line.contains("## Remarkable 2") {
+                    inRemarkableSection = true
+                    newLines.append(line)
+                } else if line.hasPrefix("## ") && inRemarkableSection {
+                    inRemarkableSection = false
+                    newLines.append(line)
+                } else if inRemarkableSection {
+                    if line.contains("**Device Token:**") {
+                        newLines.append(line)
+                        newLines.append("```")
+                        newLines.append(newToken)
+                        newLines.append("```")
+                        // Skip the original code block
+                        skipNextLines = 3
+                    } else if !line.hasPrefix("```") && !inCodeBlock {
+                        newLines.append(line)
+                    }
+                } else {
+                    newLines.append(line)
+                }
+            }
+            
+            let newContent = newLines.joined(separator: "\n")
+            try newContent.write(to: tokensFilePath, atomically: true, encoding: .utf8)
+            print("📝 Updated api-tokens.md with new bearer token")
+            
+        } catch {
+            print("⚠️ Could not update api-tokens.md file: \(error.localizedDescription)")
         }
     }
     
@@ -174,7 +286,16 @@ class SettingsViewModel: ObservableObject {
         var tokensUpdated = false
         
         if !tokens.remarkableToken.isEmpty && tokens.remarkableToken != remarkableDeviceToken {
-            remarkableDeviceToken = tokens.remarkableToken
+            // Check if this is an 8-character registration code or a bearer token
+            if tokens.remarkableToken.count == 8 {
+                // This is a registration code - set it for registration
+                remarkableRegistrationCode = tokens.remarkableToken
+                print("📋 8-character registration code loaded from file")
+            } else {
+                // This is likely a bearer token from a previous registration
+                remarkableDeviceToken = tokens.remarkableToken
+                print("🔑 Bearer token loaded from file")
+            }
             tokensUpdated = true
         }
         

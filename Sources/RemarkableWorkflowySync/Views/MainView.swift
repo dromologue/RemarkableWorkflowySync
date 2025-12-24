@@ -38,6 +38,16 @@ struct MainView: View {
                 }
                 .disabled(viewModel.selectedDocuments.isEmpty || viewModel.isLoading)
             }
+            
+            ToolbarItem(placement: .automatic) {
+                Button("Sync Workflowy → Remarkable") {
+                    Task {
+                        await viewModel.syncWorkflowyToRemarkable()
+                    }
+                }
+                .disabled(viewModel.isLoading)
+                .help("Export complete Workflowy outline as PDF to WORKFLOWY folder on Remarkable")
+            }
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(

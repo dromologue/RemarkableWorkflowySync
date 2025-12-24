@@ -4,60 +4,188 @@ import SwiftyJSON
 import Crypto
 
 final class RemarkableService: ObservableObject, @unchecked Sendable {
-    private let deviceToken: String
-    private var userToken: String?
-    private let baseURL = "https://document-storage-production-dot-remarkable-production.appspot.com"
-    private let authURL = "https://webapp-production-dot-remarkable-production.appspot.com"
+    private var deviceToken: String?
+    private var bearerToken: String?
+    private var storageHost: String?
     
-    init(deviceToken: String) {
+    // API Endpoints
+    private let authURL = "https://webapp-production-dot-remarkable-production.appspot.com"
+    private let serviceDiscoveryURL = "https://service-manager-production-dot-remarkable-production.appspot.com"
+    private let defaultStorageURL = "https://document-storage-production-dot-remarkable-production.appspot.com"
+    
+    init(deviceToken: String? = nil) {
         self.deviceToken = deviceToken
+        // Try to load saved bearer token
+        self.bearerToken = loadSavedToken()
     }
     
-    func authenticate() async throws {
-        // Validate token format first
-        if deviceToken.count < 20 {
-            throw RemarkableError.invalidToken("Device token '\(deviceToken)' is too short. Get a valid token from https://remarkable.com/device/desktop/connect")
+    /// Register a new device with an 8-character code from my.remarkable.com
+    func registerDevice(code: String) async throws -> String {
+        guard code.count == 8 else {
+            throw RemarkableError.invalidToken("Registration code must be exactly 8 characters. Get one from https://my.remarkable.com/device/connect/desktop")
+        }
+        
+        let url = "https://webapp-production-dot-remarkable-production.appspot.com/token/json/2/device/new"
+        let deviceID = generateDeviceID()
+        
+        let requestBody: [String: Any] = [
+            "code": code,
+            "deviceDesc": "desktop-windows", // Use desktop-windows as per RemarkableAPI
+            "deviceID": deviceID
+        ]
+        
+        print("🔄 Registering device with code: \(code)")
+        print("📡 Request URL: \(url)")
+        print("🆔 Device ID: \(deviceID)")
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: requestBody, options: [])
+            
+            var request = URLRequest(url: URL(string: url)!)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = jsonData
+            
+            let response = try await AF.request(request).serializingData().value
+            
+            // The response should be the token as plain text, not JSON
+            if let tokenString = String(data: response, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                if tokenString.isEmpty || tokenString.contains("error") || tokenString.contains("<html") {
+                    throw RemarkableError.apiError("Invalid response from registration: \(tokenString.prefix(100))")
+                }
+                
+                print("✅ Registration successful, token received")
+                
+                self.bearerToken = tokenString
+                saveToken(tokenString)
+                
+                // Discover storage endpoint after registration
+                try await discoverStorageEndpoint()
+                
+                return tokenString
+            } else {
+                // Fallback: try parsing as JSON
+                let json = try JSON(data: response)
+                
+                if let token = json["token"].string ?? json["bearerToken"].string ?? json.string {
+                    print("✅ Registration successful via JSON, token received")
+                    
+                    self.bearerToken = token
+                    saveToken(token)
+                    try await discoverStorageEndpoint()
+                    return token
+                }
+                
+                if let error = json["error"].string {
+                    throw RemarkableError.apiError("Registration failed: \(error)")
+                }
+                
+                throw RemarkableError.apiError("Unknown response format: \(String(data: response, encoding: .utf8) ?? "unable to decode")")
+            }
+            
+        } catch let error as RemarkableError {
+            print("❌ Registration failed: \(error.localizedDescription)")
+            throw error
+        } catch {
+            print("❌ Registration network error: \(error.localizedDescription)")
+            throw RemarkableError.networkError(error.localizedDescription)
+        }
+    }
+    
+    /// Refresh the bearer token
+    func refreshToken() async throws -> String {
+        guard let currentToken = bearerToken else {
+            throw RemarkableError.authenticationFailed
         }
         
         let url = "\(authURL)/token/json/2/user/new"
         
-        let parameters: [String: Any] = [
-            "deviceDesc": "desktop-macos",
-            "deviceID": generateDeviceID()
-        ]
-        
         let response = try await AF.request(
             url,
             method: .post,
-            parameters: parameters,
-            encoding: JSONEncoding.default,
             headers: [
-                "Authorization": "Bearer \(deviceToken)",
+                "Authorization": "Bearer \(currentToken)",
                 "Content-Type": "application/json"
             ]
         ).serializingData().value
         
         let json = try JSON(data: response)
         
-        guard let token = json["token"].string else {
+        guard let newToken = json["token"].string ?? json["bearerToken"].string else {
             throw RemarkableError.authenticationFailed
         }
         
-        self.userToken = token
+        self.bearerToken = newToken
+        saveToken(newToken)
+        return newToken
+    }
+    
+    /// Discover the storage endpoint for API calls
+    private func discoverStorageEndpoint() async throws {
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
+        }
+        
+        let url = "\(serviceDiscoveryURL)/service/json/1/document-storage"
+        
+        do {
+            let response = try await AF.request(
+                url,
+                method: .get,
+                headers: ["Authorization": "Bearer \(token)"]
+            ).serializingData().value
+            
+            let json = try JSON(data: response)
+            
+            if let status = json["Status"].string, status == "OK",
+               let host = json["Host"].string {
+                self.storageHost = "https://\(host)"
+            } else {
+                // Use default if discovery fails
+                self.storageHost = defaultStorageURL
+            }
+        } catch {
+            // Use default storage URL if discovery fails
+            self.storageHost = defaultStorageURL
+        }
+    }
+    
+    /// Validate that we have a valid bearer token
+    func validateConnection() async throws -> Bool {
+        guard bearerToken != nil else {
+            return false
+        }
+        
+        do {
+            // Try to fetch documents as a validation check
+            _ = try await fetchDocuments()
+            return true
+        } catch {
+            // If unauthorized, try to refresh token
+            if case RemarkableError.authenticationFailed = error {
+                do {
+                    _ = try await refreshToken()
+                    return true
+                } catch {
+                    return false
+                }
+            }
+            return false
+        }
     }
     
     func fetchDocuments() async throws -> [RemarkableDocument] {
-        guard let userToken = userToken else {
-            try await authenticate()
-            return try await fetchDocuments()
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
         }
         
-        let documentsURL = "\(baseURL)/document-storage/json/2/docs"
+        let storageURL = storageHost ?? defaultStorageURL
+        let documentsURL = "\(storageURL)/document-storage/json/2/docs"
         
         let response = try await AF.request(
             documentsURL,
             method: .get,
-            headers: ["Authorization": "Bearer \(userToken)"]
+            headers: ["Authorization": "Bearer \(token)"]
         ).serializingData().value
         
         let json = try JSON(data: response)
@@ -74,37 +202,186 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
     }
     
     func downloadDocument(id: String) async throws -> Data {
-        guard let userToken = userToken else {
-            try await authenticate()
-            return try await downloadDocument(id: id)
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
         }
         
-        let downloadURL = "\(baseURL)/document-storage/json/2/docs/\(id)/download"
+        let storageURL = storageHost ?? defaultStorageURL
         
-        let response = try await AF.request(
-            downloadURL,
+        // First get the blob URL
+        let blobURLRequest = "\(storageURL)/document-storage/json/2/docs/\(id)/blob"
+        
+        let blobResponse = try await AF.request(
+            blobURLRequest,
             method: .get,
-            headers: ["Authorization": "Bearer \(userToken)"]
+            headers: ["Authorization": "Bearer \(token)"]
         ).serializingData().value
         
+        let blobJson = try JSON(data: blobResponse)
+        guard let blobURL = blobJson["url"].string else {
+            throw RemarkableError.invalidResponse
+        }
+        
+        // Download from the blob URL
+        let response = try await AF.request(blobURL).serializingData().value
         return response
     }
     
     func getDocumentMetadata(id: String) async throws -> JSON {
-        guard let userToken = userToken else {
-            try await authenticate()
-            return try await getDocumentMetadata(id: id)
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
         }
         
-        let metadataURL = "\(baseURL)/document-storage/json/2/docs/\(id)"
+        let storageURL = storageHost ?? defaultStorageURL
+        let metadataURL = "\(storageURL)/document-storage/json/2/docs/\(id)"
         
         let response = try await AF.request(
             metadataURL,
             method: .get,
-            headers: ["Authorization": "Bearer \(userToken)"]
+            headers: ["Authorization": "Bearer \(token)"]
         ).serializingData().value
         
         return try JSON(data: response)
+    }
+    
+    /// Delete a document or folder
+    func deleteDocument(id: String) async throws {
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
+        }
+        
+        let storageURL = storageHost ?? defaultStorageURL
+        let deleteURL = "\(storageURL)/document-storage/json/2/delete"
+        
+        let parameters: [[String: Any]] = [[
+            "ID": id,
+            "Version": 1
+        ]]
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: parameters, options: [])
+        
+        var request = URLRequest(url: URL(string: deleteURL)!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        _ = try await AF.request(request).serializingData().value
+    }
+    
+    /// Upload a PDF document
+    func uploadPDF(data: Data, name: String, parentId: String? = nil) async throws -> String {
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
+        }
+        
+        let storageURL = storageHost ?? defaultStorageURL
+        let documentId = UUID().uuidString.lowercased()
+        
+        // Step 1: Request upload URL
+        let uploadRequestURL = "\(storageURL)/document-storage/json/2/upload/request"
+        let uploadParams: [[String: Any]] = [[
+            "ID": documentId,
+            "Type": "DocumentType",
+            "Version": 1
+        ]]
+        
+        let uploadJsonData = try JSONSerialization.data(withJSONObject: uploadParams, options: [])
+        
+        var uploadRequest = URLRequest(url: URL(string: uploadRequestURL)!)
+        uploadRequest.httpMethod = "PUT"
+        uploadRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        uploadRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        uploadRequest.httpBody = uploadJsonData
+        
+        let uploadResponse = try await AF.request(uploadRequest).serializingData().value
+        
+        let uploadJson = try JSON(data: uploadResponse)
+        guard let uploadURL = uploadJson[0]["BlobURLPut"].string else {
+            throw RemarkableError.apiError("Failed to get upload URL")
+        }
+        
+        // Step 2: Upload the PDF
+        _ = try await AF.upload(data, to: uploadURL, method: .put).serializingData().value
+        
+        // Step 3: Update metadata
+        let updateStatusURL = "\(storageURL)/document-storage/json/2/upload/update-status"
+        let metadataParams: [[String: Any]] = [[
+            "ID": documentId,
+            "Parent": parentId ?? "",
+            "VissibleName": name,
+            "Type": "DocumentType",
+            "Version": 1,
+            "ModifiedClient": ISO8601DateFormatter().string(from: Date())
+        ]]
+        
+        let metadataJsonData = try JSONSerialization.data(withJSONObject: metadataParams, options: [])
+        
+        var metadataRequest = URLRequest(url: URL(string: updateStatusURL)!)
+        metadataRequest.httpMethod = "PUT"
+        metadataRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        metadataRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        metadataRequest.httpBody = metadataJsonData
+        
+        _ = try await AF.request(metadataRequest).serializingData().value
+        
+        return documentId
+    }
+    
+    /// Create a folder/collection
+    func createFolder(name: String, parentId: String? = nil) async throws -> String {
+        guard let token = bearerToken else {
+            throw RemarkableError.authenticationFailed
+        }
+        
+        let storageURL = storageHost ?? defaultStorageURL
+        let folderId = UUID().uuidString.lowercased()
+        
+        // Step 1: Request upload URL for folder creation
+        let uploadRequestURL = "\(storageURL)/document-storage/json/2/upload/request"
+        let uploadParams: [[String: Any]] = [[
+            "ID": folderId,
+            "Type": "CollectionType",
+            "Version": 1
+        ]]
+        
+        let uploadJsonData = try JSONSerialization.data(withJSONObject: uploadParams, options: [])
+        
+        var uploadRequest = URLRequest(url: URL(string: uploadRequestURL)!)
+        uploadRequest.httpMethod = "PUT"
+        uploadRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        uploadRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        uploadRequest.httpBody = uploadJsonData
+        
+        let uploadResponse = try await AF.request(uploadRequest).serializingData().value
+        let uploadJson = try JSON(data: uploadResponse)
+        
+        guard uploadJson[0]["Success"].bool == true else {
+            throw RemarkableError.apiError("Failed to initiate folder creation")
+        }
+        
+        // Step 2: Update metadata to create the folder
+        let updateStatusURL = "\(storageURL)/document-storage/json/2/upload/update-status"
+        let metadataParams: [[String: Any]] = [[
+            "ID": folderId,
+            "Parent": parentId ?? "",
+            "VissibleName": name,
+            "Type": "CollectionType",
+            "Version": 1,
+            "ModifiedClient": ISO8601DateFormatter().string(from: Date())
+        ]]
+        
+        let metadataJsonData = try JSONSerialization.data(withJSONObject: metadataParams, options: [])
+        
+        var metadataRequest = URLRequest(url: URL(string: updateStatusURL)!)
+        metadataRequest.httpMethod = "PUT"
+        metadataRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        metadataRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        metadataRequest.httpBody = metadataJsonData
+        
+        _ = try await AF.request(metadataRequest).serializingData().value
+        
+        return folderId
     }
     
     private func parseDocument(from json: JSON) -> RemarkableDocument? {
@@ -132,22 +409,44 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
     }
     
     private func generateDeviceID() -> String {
-        let uuid = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        return String(uuid.prefix(32))
+        // Use a persistent device ID
+        if let savedDeviceID = UserDefaults.standard.string(forKey: "RemarkableDeviceID") {
+            return savedDeviceID
+        }
+        
+        let deviceID = UUID().uuidString
+        UserDefaults.standard.set(deviceID, forKey: "RemarkableDeviceID")
+        return deviceID
+    }
+    
+    private func saveToken(_ token: String) {
+        let tokenPath = getTokenPath()
+        try? token.write(to: tokenPath, atomically: true, encoding: .utf8)
+    }
+    
+    private func loadSavedToken() -> String? {
+        let tokenPath = getTokenPath()
+        return try? String(contentsOf: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func getTokenPath() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documentsPath.appendingPathComponent(".remarkable-token")
     }
 }
 
-enum RemarkableError: Error, LocalizedError {
+enum RemarkableError: Error, LocalizedError, Equatable {
     case authenticationFailed
     case invalidResponse
     case documentNotFound
     case networkError(String)
     case invalidToken(String)
+    case apiError(String)
     
     var errorDescription: String? {
         switch self {
         case .authenticationFailed:
-            return "Failed to authenticate with Remarkable service"
+            return "Failed to authenticate with Remarkable service. You may need to register with a new code."
         case .invalidResponse:
             return "Received invalid response from Remarkable service"
         case .documentNotFound:
@@ -156,6 +455,8 @@ enum RemarkableError: Error, LocalizedError {
             return message
         case .networkError(let message):
             return "Network error: \(message)"
+        case .apiError(let message):
+            return "API Error: \(message)"
         }
     }
 }

@@ -4,6 +4,11 @@ import XCTest
 final class ServiceTests: XCTestCase {
     
     func testRemarkableServiceInitialization() {
+        let service = RemarkableService()
+        XCTAssertNotNil(service)
+    }
+    
+    func testRemarkableServiceWithDeviceToken() {
         let service = RemarkableService(deviceToken: "test-token")
         XCTAssertNotNil(service)
     }
@@ -62,7 +67,9 @@ final class ServiceTests: XCTestCase {
             .authenticationFailed,
             .invalidResponse,
             .documentNotFound,
-            .networkError("Test error")
+            .networkError("Test error"),
+            .invalidToken("Invalid token format"),
+            .apiError("API call failed")
         ]
         
         for error in errors {

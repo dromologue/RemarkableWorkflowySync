@@ -15,9 +15,10 @@ class SyncService: ObservableObject {
     private var workflowyService: WorkflowyService
     private var dropboxService: DropboxService
     private let pdfConversionService = PDFConversionService()
+    private let pdfGenerator = PDFGenerator()
     
     init() {
-        remarkableService = RemarkableService(deviceToken: settings.remarkableDeviceToken)
+        remarkableService = RemarkableService()
         workflowyService = WorkflowyService(apiKey: settings.workflowyApiKey)
         dropboxService = DropboxService(accessToken: settings.dropboxAccessToken)
     }
@@ -100,9 +101,10 @@ class SyncService: ObservableObject {
     private func syncRemarkableToWorkflowy(_ document: RemarkableDocument) async throws {
         let documentData = try await remarkableService.downloadDocument(id: document.id)
         
-        var pdfData: Data
         var dropboxLink: String?
         
+        // Always convert to PDF and upload to Dropbox for sharing
+        let pdfData: Data
         if document.isPDF {
             pdfData = documentData
         } else {
@@ -111,32 +113,24 @@ class SyncService: ObservableObject {
                 documentName: document.name,
                 documentType: document.type
             )
-            
-            dropboxLink = try await dropboxService.uploadFile(
-                data: pdfData,
-                fileName: "\(document.name).pdf",
-                path: "/RemarkableSync"
-            )
         }
         
-        let nodeNote = createWorkflowyNote(for: document, dropboxLink: dropboxLink)
+        // Upload to Dropbox for link sharing
+        dropboxLink = try await dropboxService.uploadFile(
+            data: pdfData,
+            fileName: "\(document.name).pdf",
+            path: "/RemarkableSync"
+        )
         
-        if let existingNodeId = document.workflowyNodeId {
-            try await workflowyService.updateNode(
-                id: existingNodeId,
-                name: document.name,
-                note: nodeNote
-            )
-        } else {
-            _ = try await workflowyService.createNode(
-                name: document.name,
-                note: nodeNote,
-                parentId: nil
-            )
-        }
+        // Use new Workflowy integration with Remarkable folder structure
+        _ = try await workflowyService.syncRemarkableDocument(document, dropboxUrl: dropboxLink)
     }
     
     private func syncWorkflowyToRemarkable(_ document: RemarkableDocument) async throws {
+        // This is for individual document sync - not typically used
+        // The main Workflowy to Remarkable sync is done via syncCompleteWorkflowyOutline
+        print("⚠️ Individual document sync from Workflowy to Remarkable not implemented")
+        print("   Use syncCompleteWorkflowyOutline() for full outline sync")
     }
     
     private func syncBidirectional(_ document: RemarkableDocument) async throws {
@@ -174,6 +168,87 @@ class SyncService: ObservableObject {
         return formatter.string(fromByteCount: Int64(bytes))
     }
     
+    // MARK: - Workflowy to Remarkable Sync
+    
+    func syncCompleteWorkflowyOutline() async throws {
+        syncStatus = .syncing
+        
+        defer {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                if syncStatus != .syncing {
+                    syncStatus = .idle
+                }
+            }
+        }
+        
+        do {
+            print("🔄 Starting complete Workflowy outline sync")
+            
+            // Fetch the complete Workflowy outline
+            let workflowyNodes = try await workflowyService.fetchRootNodes()
+            
+            if workflowyNodes.isEmpty {
+                print("⚠️ No Workflowy nodes found - either empty outline or API issues")
+                throw SyncError.emptyWorkflowyOutline
+            }
+            
+            print("✅ Fetched \(workflowyNodes.count) root nodes from Workflowy")
+            
+            // Generate PDF from Workflowy outline with navigation
+            let pdfData = try await pdfGenerator.generateWorkflowyNavigationPDF(from: workflowyNodes)
+            
+            print("✅ Generated PDF (\(pdfData.count) bytes) from Workflowy outline")
+            
+            // Create WORKFLOWY folder on Remarkable and upload PDF
+            let documentId = try await createWorkflowyFolderAndUploadPDF(pdfData: pdfData)
+            
+            print("✅ Successfully synced Workflowy outline to Remarkable as document: \(documentId)")
+            
+            syncStatus = .completed
+            lastSyncDate = Date()
+            
+        } catch {
+            print("❌ Workflowy outline sync failed: \(error.localizedDescription)")
+            syncStatus = .error(error.localizedDescription)
+            throw error
+        }
+    }
+    
+    private func createWorkflowyFolderAndUploadPDF(pdfData: Data) async throws -> String {
+        // Check if WORKFLOWY folder already exists
+        let documents = try await remarkableService.fetchDocuments()
+        let workflowyFolder = documents.first { $0.name == "WORKFLOWY" && $0.type == "CollectionType" }
+        
+        let parentId: String?
+        if let folder = workflowyFolder {
+            parentId = folder.id
+            print("📁 Using existing WORKFLOWY folder: \(folder.id)")
+        } else {
+            // Create WORKFLOWY folder
+            parentId = try await remarkableService.createFolder(name: "WORKFLOWY")
+            print("📁 Created new WORKFLOWY folder: \(parentId ?? "unknown")")
+        }
+        
+        // Generate unique filename with timestamp
+        let timestamp = Date().formatted(.dateTime.year().month().day().hour().minute())
+        let fileName = "Workflowy_Export_\(timestamp)"
+        
+        // Upload the PDF to the WORKFLOWY folder
+        let documentId = try await remarkableService.uploadPDF(
+            data: pdfData,
+            name: fileName,
+            parentId: parentId
+        )
+        
+        return documentId
+    }
+    
+    func syncWorkflowyOutlineManually() async throws {
+        // Manual trigger for Workflowy to Remarkable sync
+        try await syncCompleteWorkflowyOutline()
+    }
+    
     private func loadSyncPairs() -> [SyncPair] {
         guard let url = getSyncPairsURL(),
               let data = try? Data(contentsOf: url),
@@ -206,9 +281,7 @@ class SyncService: ObservableObject {
     }
     
     func updateSettings(_ newSettings: AppSettings) {
-        if newSettings.remarkableDeviceToken != settings.remarkableDeviceToken {
-            remarkableService = RemarkableService(deviceToken: newSettings.remarkableDeviceToken)
-        }
+        // Remarkable service manages its own authentication now
         
         if newSettings.workflowyApiKey != settings.workflowyApiKey {
             workflowyService = WorkflowyService(apiKey: newSettings.workflowyApiKey)
@@ -221,6 +294,26 @@ class SyncService: ObservableObject {
         if isRunning && newSettings.syncInterval != settings.syncInterval {
             stopBackgroundSync()
             startBackgroundSync()
+        }
+    }
+}
+
+enum SyncError: Error, LocalizedError {
+    case emptyWorkflowyOutline
+    case workflowyConnectionFailed
+    case remarkableConnectionFailed
+    case pdfGenerationFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .emptyWorkflowyOutline:
+            return "No content found in Workflowy outline"
+        case .workflowyConnectionFailed:
+            return "Failed to connect to Workflowy API"
+        case .remarkableConnectionFailed:
+            return "Failed to connect to Remarkable service"
+        case .pdfGenerationFailed:
+            return "Failed to generate PDF from Workflowy content"
         }
     }
 }

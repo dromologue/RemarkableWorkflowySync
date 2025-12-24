@@ -151,10 +151,10 @@ struct SettingsView: View {
             
             // Top row: Required APIs
             HStack(alignment: .top, spacing: 16) {
-                // Remarkable Device Token
+                // Remarkable Authentication
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Remarkable Device Token")
+                        Text("Remarkable Authentication")
                             .font(.headline)
                         Spacer()
                         if !settings.remarkableDeviceToken.isEmpty {
@@ -164,17 +164,97 @@ struct SettingsView: View {
                         }
                     }
                     
-                    SecureField("Enter your device token", text: $settings.remarkableDeviceToken)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(height: 40)
+                    // Show registration workflow
+                    if settings.remarkableDeviceToken.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Registration code input
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Step 1: Enter Registration Code")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.blue)
+                                
+                                HStack {
+                                    TextField("8-character code", text: $settings.remarkableRegistrationCode)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(height: 40)
+                                        .onChange(of: settings.remarkableRegistrationCode) { newValue in
+                                            // Limit to 8 characters and uppercase
+                                            settings.remarkableRegistrationCode = String(newValue.uppercased().prefix(8))
+                                        }
+                                    
+                                    Button("Register Device") {
+                                        Task {
+                                            await settings.registerRemarkableDevice()
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(settings.remarkableRegistrationCode.count != 8 || settings.isTestingConnection)
+                                }
+                            }
+                            
+                            if !settings.remarkableRegistrationCode.isEmpty {
+                                Text("Step 2: Click 'Register Device' to exchange your code for an access token")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    } else {
+                        // Show authenticated status
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("Device Registered & Authenticated")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.green)
+                                Spacer()
+                            }
+                            
+                            HStack {
+                                Text("Bearer Token: ****\(settings.remarkableDeviceToken.suffix(8))")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                                
+                                Button("Re-authenticate") {
+                                    settings.remarkableDeviceToken = ""
+                                    settings.remarkableRegistrationCode = ""
+                                    settings.remarkableConnectionStatus = .unknown
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
                     
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                        Text("Get your device token from remarkable.com/device/desktop/connect")
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                            Text("How to get your registration code:")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Text("1. Visit: my.remarkable.com/device/desktop/connect")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                            .padding(.leading, 16)
+                        
+                        Text("2. Copy the 8-character code and enter it above")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 16)
+                        
+                        Text("3. The app will exchange it for a permanent access token")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 16)
                     }
                 }
                 .padding(16)

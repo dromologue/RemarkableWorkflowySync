@@ -33,7 +33,7 @@ struct APITokenParser {
         }
     }
     
-    private func findProjectRoot() -> URL? {
+    func findProjectRoot() -> URL? {
         let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         
         // Check if we're already in the project root (has Package.swift)
