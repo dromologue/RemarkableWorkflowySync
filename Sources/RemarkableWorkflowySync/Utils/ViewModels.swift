@@ -78,7 +78,9 @@ class SettingsViewModel: ObservableObject {
     
     @Published var remarkableConnectionStatus: ConnectionStatus = .unknown
     @Published var workflowyConnectionStatus: ConnectionStatus = .unknown
+    @Published var dropboxConnectionStatus: ConnectionStatus = .unknown
     @Published var isTestingConnection = false
+    @Published var autoLoadedFromFile = false
     
     var hasValidSettings: Bool {
         !remarkableDeviceToken.isEmpty &&
@@ -92,6 +94,7 @@ class SettingsViewModel: ObservableObject {
     
     init() {
         loadSettings()
+        loadTokensFromFile()
     }
     
     private func loadSettings() {
@@ -140,6 +143,89 @@ class SettingsViewModel: ObservableObject {
         } catch {
             workflowyConnectionStatus = .failed(error.localizedDescription)
         }
+    }
+    
+    func testDropboxConnection() async {
+        isTestingConnection = true
+        defer { isTestingConnection = false }
+        
+        guard !dropboxAccessToken.isEmpty else {
+            dropboxConnectionStatus = .failed("No access token")
+            return
+        }
+        
+        do {
+            let service = DropboxService(accessToken: dropboxAccessToken)
+            // Test by trying to get account info
+            try await service.getAccountInfo()
+            dropboxConnectionStatus = .connected
+        } catch {
+            dropboxConnectionStatus = .failed(error.localizedDescription)
+        }
+    }
+    
+    private func loadTokensFromFile() {
+        guard let tokens = APITokenParser.shared.loadTokensFromFile() else {
+            print("No tokens loaded from api-tokens.md file")
+            return
+        }
+        
+        // Only update if tokens are not empty and different from current values
+        var tokensUpdated = false
+        
+        if !tokens.remarkableToken.isEmpty && tokens.remarkableToken != remarkableDeviceToken {
+            remarkableDeviceToken = tokens.remarkableToken
+            tokensUpdated = true
+        }
+        
+        if !tokens.workflowyApiKey.isEmpty && tokens.workflowyApiKey != workflowyApiKey {
+            workflowyApiKey = tokens.workflowyApiKey
+            tokensUpdated = true
+        }
+        
+        if !tokens.dropboxAccessToken.isEmpty && tokens.dropboxAccessToken != dropboxAccessToken {
+            dropboxAccessToken = tokens.dropboxAccessToken
+            tokensUpdated = true
+        }
+        
+        if tokensUpdated {
+            autoLoadedFromFile = true
+            print("✅ API tokens loaded from api-tokens.md file")
+            
+            // Auto-test connections after loading
+            Task {
+                await testAllConnections()
+            }
+        }
+    }
+    
+    func testAllConnections() async {
+        // Capture token values for use in async context
+        let remarkableToken = remarkableDeviceToken
+        let workflowyKey = workflowyApiKey
+        let dropboxToken = dropboxAccessToken
+        
+        // Test connections in parallel for faster feedback
+        async let remarkableTest: () = {
+            if !remarkableToken.isEmpty {
+                await testRemarkableConnection()
+            }
+        }()
+        
+        async let workflowyTest: () = {
+            if !workflowyKey.isEmpty {
+                await testWorkflowyConnection()
+            }
+        }()
+        
+        async let dropboxTest: () = {
+            if !dropboxToken.isEmpty {
+                await testDropboxConnection()
+            }
+        }()
+        
+        // Wait for all tests to complete
+        _ = await (remarkableTest, workflowyTest, dropboxTest)
     }
 }
 

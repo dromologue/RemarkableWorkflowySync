@@ -48,6 +48,11 @@ struct SettingsView: View {
                         welcomeSection
                     }
                     
+                    // Show auto-load status if tokens were loaded from file
+                    if settings.autoLoadedFromFile {
+                        autoLoadStatusSection
+                    }
+                    
                     apiKeysSection
                     
                     // Side-by-side layout for sync settings and about
@@ -93,6 +98,47 @@ struct SettingsView: View {
         .padding(.vertical, 20)
         .background(Color(.controlBackgroundColor))
         .cornerRadius(12)
+    }
+    
+    private var autoLoadStatusSection: some View {
+        HStack {
+            Image(systemName: "doc.text.fill")
+                .foregroundColor(.green)
+                .font(.title3)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("API Tokens Auto-Loaded")
+                    .font(.headline)
+                    .foregroundColor(.green)
+                Text("Credentials were automatically loaded from api-tokens.md file")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Show connection status summary
+            HStack(spacing: 8) {
+                if settings.remarkableConnectionStatus == .connected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                }
+                if settings.workflowyConnectionStatus == .connected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                }
+                if !settings.dropboxAccessToken.isEmpty && settings.dropboxConnectionStatus == .connected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.green.opacity(0.1))
+        .cornerRadius(10)
     }
     
     private var apiKeysSection: some View {
@@ -321,6 +367,28 @@ struct SettingsView: View {
                         Spacer()
                         
                         connectionStatusIndicator(settings.workflowyConnectionStatus)
+                    }
+                    
+                    // Dropbox Test (if token exists)
+                    if !settings.dropboxAccessToken.isEmpty {
+                        HStack {
+                            Button("Test Dropbox Connection") {
+                                Task {
+                                    await settings.testDropboxConnection()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(settings.isTestingConnection)
+                            
+                            if settings.isTestingConnection {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                            
+                            Spacer()
+                            
+                            connectionStatusIndicator(settings.dropboxConnectionStatus)
+                        }
                     }
                 }
             }

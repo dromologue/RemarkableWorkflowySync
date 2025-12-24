@@ -27,6 +27,24 @@ final class DropboxService: @unchecked Sendable {
         return json["account_id"].exists()
     }
     
+    func getAccountInfo() async throws {
+        let url = "\(baseURL)/users/get_current_account"
+        
+        let response = try await AF.request(
+            url,
+            method: .post,
+            headers: [
+                "Authorization": "Bearer \(accessToken)",
+                "Content-Type": "application/json"
+            ]
+        ).serializingData().value
+        
+        let json = try JSON(data: response)
+        guard json["account_id"].exists() else {
+            throw DropboxError.authenticationFailed
+        }
+    }
+    
     func uploadFile(data: Data, fileName: String, path: String = "/") async throws -> String {
         let fullPath = path.hasSuffix("/") ? path + fileName : "\(path)/\(fileName)"
         let uploadURL = "\(contentURL)/files/upload"
