@@ -7,6 +7,7 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
     private let deviceToken: String
     private var userToken: String?
     private let baseURL = "https://document-storage-production-dot-remarkable-production.appspot.com"
+    private let authURL = "https://webapp-production-dot-remarkable-production.appspot.com"
     
     init(deviceToken: String) {
         self.deviceToken = deviceToken
@@ -18,7 +19,7 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
             throw RemarkableError.invalidToken("Device token '\(deviceToken)' is too short. Get a valid token from https://remarkable.com/device/desktop/connect")
         }
         
-        let authURL = "https://webapp-production-dot-remarkable-production.appspot.com/token/json/2/user/new"
+        let url = "\(authURL)/token/json/2/user/new"
         
         let parameters: [String: Any] = [
             "deviceDesc": "desktop-macos",
@@ -26,11 +27,14 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
         ]
         
         let response = try await AF.request(
-            authURL,
+            url,
             method: .post,
             parameters: parameters,
             encoding: JSONEncoding.default,
-            headers: ["Authorization": "Bearer \(deviceToken)"]
+            headers: [
+                "Authorization": "Bearer \(deviceToken)",
+                "Content-Type": "application/json"
+            ]
         ).serializingData().value
         
         let json = try JSON(data: response)
