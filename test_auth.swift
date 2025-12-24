@@ -65,18 +65,15 @@ func testWorkflowyAPI() async {
     let apiKey = "cf5a1fc04b7a17388d630d875a498e6aff6afda9" // Your API key
     
     let endpoints = [
-        "https://workflowy.com/api/beta/get-initialization-data",
-        "https://workflowy.com/get_initialization_data",
-        "https://workflowy.com/api/outline",
-        "https://workflowy.com/api/nodes" // Original endpoint
+        "https://workflowy.com/api/v1/targets",                     // Official API - check access
+        "https://workflowy.com/api/v1/nodes?target=inbox&limit=3"   // Official API - test data access
     ]
     
     for url in endpoints {
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "GET"
-        request.setValue("sessionid=\(apiKey)", forHTTPHeaderField: "Cookie")
-        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("RemarkableWorkflowySync/1.0", forHTTPHeaderField: "User-Agent")
         

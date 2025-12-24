@@ -13,11 +13,10 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
     }
     
     func validateConnection() async throws -> Bool {
-        // Test multiple Workflowy API endpoints
+        // Test the official Workflowy API endpoint
         let endpoints = [
-            "https://workflowy.com/api/beta/get-initialization-data",
-            "https://workflowy.com/get_initialization_data",
-            "https://workflowy.com/api/outline"
+            "https://workflowy.com/api/v1/targets",                     // Official API - check access
+            "https://workflowy.com/api/v1/nodes?target=inbox&limit=1"  // Official API - test data access
         ]
         
         print("🔄 Testing Workflowy connection")
@@ -34,11 +33,10 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
                     url,
                     method: .get,
                     headers: [
-                        "Cookie": "sessionid=\(apiKey)",
-                        "X-Requested-With": "XMLHttpRequest",
+                        "Authorization": "Bearer \(apiKey)",
+                        "Content-Type": "application/json",
                         "User-Agent": "RemarkableWorkflowySync/1.0",
-                        "Accept": "application/json",
-                        "Authorization": "Bearer \(apiKey)"
+                        "Accept": "application/json"
                     ]
                 ).serializingData().value
             
@@ -54,13 +52,16 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
                 let json = try JSON(data: response)
                 
                 // Check for successful responses with various formats
-                if json["projectTreeData"].exists() ||
-                   json["globals"].exists() ||
-                   json["items"].exists() ||
-                   json["outline"].exists() ||
-                   json["email"].exists() ||
-                   json["username"].exists() ||
-                   !json.isEmpty {
+                if json["targets"].exists() ||                 // Official API targets response
+                   json["nodes"].exists() ||                   // Official API nodes response
+                   json["data"].exists() ||                    // Alternative API format
+                   json["projectTreeData"].exists() ||         // Legacy format
+                   json["globals"].exists() ||                 // Legacy format
+                   json["items"].exists() ||                   // Legacy format
+                   json["outline"].exists() ||                 // Legacy format
+                   json["email"].exists() ||                   // User info
+                   json["username"].exists() ||                // User info
+                   (!json.isEmpty && !responseString.contains("error")) {
                     
                     // If we have a username, verify it matches the response
                     if let expectedUsername = username {
@@ -103,12 +104,9 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
     }
     
     func fetchRootNodes() async throws -> [WorkflowyNode] {
-        // Try various Workflowy API endpoints for fetching outline data
+        // Try Workflowy API endpoints for fetching outline data
         let endpoints = [
-            "https://workflowy.com/api/beta/get-initialization-data",
-            "https://workflowy.com/get_initialization_data", 
-            "https://workflowy.com/api/outline",
-            "https://workflowy.com/api/beta/list-children/"
+            "https://workflowy.com/api/v1/nodes?target=inbox"           // Official API - get all root nodes
         ]
         
         var lastError: Error?
@@ -121,9 +119,8 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
                     url,
                     method: .get,
                     headers: [
-                        "Cookie": "sessionid=\(apiKey)",
-                        "X-Requested-With": "XMLHttpRequest",
                         "Authorization": "Bearer \(apiKey)",
+                        "Content-Type": "application/json",
                         "User-Agent": "RemarkableWorkflowySync/1.0",
                         "Accept": "application/json"
                     ]
@@ -141,7 +138,22 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
                 var nodes: [WorkflowyNode] = []
                 
                 // Try different response formats
-                if let projectTreeData = json["projectTreeData"].dictionary {
+                if let nodesArray = json["nodes"].array {
+                    // Official API format: {nodes: [...]}
+                    for item in nodesArray {
+                        if let node = parseOfficialAPINode(from: item) {
+                            nodes.append(node)
+                        }
+                    }
+                } else if let dataArray = json["data"].array {
+                    // Alternative API format: {data: [...]}
+                    for item in dataArray {
+                        if let node = parseOfficialAPINode(from: item) {
+                            nodes.append(node)
+                        }
+                    }
+                } else if let projectTreeData = json["projectTreeData"].dictionary {
+                    // Legacy format
                     for (_, item) in projectTreeData {
                         if let node = parseNode(from: item) {
                             nodes.append(node)
@@ -182,7 +194,7 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
     func createNode(name: String, note: String? = nil, parentId: String? = nil) async throws -> WorkflowyNode {
         // Try the official Workflowy API endpoint for creating nodes
         let endpoints = [
-            "https://workflowy.com/api/nodes"
+            "https://workflowy.com/api/v1/nodes"     // Official API
         ]
         
         print("🔄 Creating Workflowy node: \(name)")
@@ -506,7 +518,36 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
         throw WorkflowyError.apiError("Workflowy's public API doesn't support deleting nodes. Please delete manually in Workflowy.")
     }
     
+    private func parseOfficialAPINode(from json: JSON) -> WorkflowyNode? {
+        // Parse nodes from the official Workflowy API format
+        guard let id = json["id"].string else {
+            return nil
+        }
+        
+        let name = json["name"].string ?? ""
+        let note = json["note"].string
+        let parentId = json["parent_id"].string
+        
+        var children: [WorkflowyNode] = []
+        if let childrenData = json["children"].array {
+            for childJson in childrenData {
+                if let child = parseOfficialAPINode(from: childJson) {
+                    children.append(child)
+                }
+            }
+        }
+        
+        return WorkflowyNode(
+            id: id,
+            name: name,
+            note: note,
+            parentId: parentId?.isEmpty == true ? nil : parentId,
+            children: children.isEmpty ? nil : children
+        )
+    }
+    
     private func parseNode(from json: JSON) -> WorkflowyNode? {
+        // Parse nodes from legacy Workflowy API format
         guard let id = json["id"].string,
               let name = json["nm"].string else {
             return nil
