@@ -4,10 +4,12 @@ import SwiftyJSON
 
 final class WorkflowyService: ObservableObject, @unchecked Sendable {
     private let apiKey: String
+    private let username: String?
     private var remarkableRootNodeId: String?
     
-    init(apiKey: String) {
+    init(apiKey: String, username: String? = nil) {
         self.apiKey = apiKey
+        self.username = username
     }
     
     func validateConnection() async throws -> Bool {
@@ -19,6 +21,9 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
         ]
         
         print("🔄 Testing Workflowy connection")
+        if let username = username {
+            print("👤 Username: \(username)")
+        }
         print("🔑 API Key: \(apiKey.prefix(8))...")
         
         for url in endpoints {
@@ -56,7 +61,23 @@ final class WorkflowyService: ObservableObject, @unchecked Sendable {
                    json["email"].exists() ||
                    json["username"].exists() ||
                    !json.isEmpty {
-                    print("✅ Workflowy connection successful via \(url)")
+                    
+                    // If we have a username, verify it matches the response
+                    if let expectedUsername = username {
+                        let responseUsername = json["username"].string ?? json["email"].string
+                        if let responseUsername = responseUsername {
+                            if responseUsername.lowercased() == expectedUsername.lowercased() {
+                                print("✅ Workflowy connection successful via \(url) for user: \(expectedUsername)")
+                            } else {
+                                print("⚠️ Username mismatch: expected \(expectedUsername), got \(responseUsername)")
+                                print("✅ Workflowy connection successful via \(url) but for different user")
+                            }
+                        } else {
+                            print("✅ Workflowy connection successful via \(url) (username not returned in response)")
+                        }
+                    } else {
+                        print("✅ Workflowy connection successful via \(url)")
+                    }
                     return true
                 }
                 

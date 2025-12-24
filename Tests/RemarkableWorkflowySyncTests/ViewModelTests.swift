@@ -266,6 +266,9 @@ extension APITokenParser {
         }
         
         return ParsedTokens(
+            remarkableUsername: "",
+            workflowyUsername: "",
+            dropboxUsername: "",
             remarkableToken: remarkableToken,
             workflowyApiKey: workflowyApiKey,
             dropboxAccessToken: dropboxAccessToken

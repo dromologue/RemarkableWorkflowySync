@@ -164,6 +164,18 @@ struct SettingsView: View {
                         }
                     }
                     
+                    // Username field
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Username/Email")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("justin.arbuckle@hey.com", text: $settings.remarkableUsername)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(height: 32)
+                    }
+                    
                     // Show registration workflow
                     if settings.remarkableDeviceToken.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -275,6 +287,18 @@ struct SettingsView: View {
                         }
                     }
                     
+                    // Username field
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Username/Email")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("dromologue@gmail.com", text: $settings.workflowyUsername)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(height: 32)
+                    }
+                    
                     SecureField("Enter your API key", text: $settings.workflowyApiKey)
                         .textFieldStyle(.roundedBorder)
                         .frame(height: 40)
@@ -308,6 +332,18 @@ struct SettingsView: View {
                             .foregroundColor(.green)
                             .font(.title3)
                     }
+                }
+                
+                // Username field
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Username/Email")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("jdfarbuckle@gmail.com", text: $settings.dropboxUsername)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(height: 32)
                 }
                 
                 SecureField("Enter your access token", text: $settings.dropboxAccessToken)

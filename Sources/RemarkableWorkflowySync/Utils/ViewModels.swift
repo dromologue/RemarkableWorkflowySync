@@ -82,6 +82,9 @@ class MainViewModel: ObservableObject {
 
 @MainActor
 class SettingsViewModel: ObservableObject {
+    @Published var remarkableUsername = ""
+    @Published var workflowyUsername = ""
+    @Published var dropboxUsername = ""
     @Published var remarkableDeviceToken = ""
     @Published var remarkableRegistrationCode = ""
     @Published var workflowyApiKey = ""
@@ -114,6 +117,9 @@ class SettingsViewModel: ObservableObject {
     
     private func loadSettings() {
         let settings = AppSettings.load()
+        remarkableUsername = settings.remarkableUsername
+        workflowyUsername = settings.workflowyUsername
+        dropboxUsername = settings.dropboxUsername
         remarkableDeviceToken = settings.remarkableDeviceToken
         workflowyApiKey = settings.workflowyApiKey
         dropboxAccessToken = settings.dropboxAccessToken
@@ -124,6 +130,9 @@ class SettingsViewModel: ObservableObject {
     
     func saveSettings() {
         let settings = AppSettings(
+            remarkableUsername: remarkableUsername,
+            workflowyUsername: workflowyUsername,
+            dropboxUsername: dropboxUsername,
             remarkableDeviceToken: remarkableDeviceToken,
             workflowyApiKey: workflowyApiKey,
             dropboxAccessToken: dropboxAccessToken,
@@ -249,7 +258,7 @@ class SettingsViewModel: ObservableObject {
         defer { isTestingConnection = false }
         
         do {
-            let service = WorkflowyService(apiKey: workflowyApiKey)
+            let service = WorkflowyService(apiKey: workflowyApiKey, username: workflowyUsername.isEmpty ? nil : workflowyUsername)
             let isValid = try await service.validateConnection()
             workflowyConnectionStatus = isValid ? .connected : .failed("Invalid API key")
         } catch {
@@ -285,6 +294,23 @@ class SettingsViewModel: ObservableObject {
         // Only update if tokens are not empty and different from current values
         var tokensUpdated = false
         
+        // Load usernames
+        if !tokens.remarkableUsername.isEmpty && tokens.remarkableUsername != remarkableUsername {
+            remarkableUsername = tokens.remarkableUsername
+            tokensUpdated = true
+        }
+        
+        if !tokens.workflowyUsername.isEmpty && tokens.workflowyUsername != workflowyUsername {
+            workflowyUsername = tokens.workflowyUsername
+            tokensUpdated = true
+        }
+        
+        if !tokens.dropboxUsername.isEmpty && tokens.dropboxUsername != dropboxUsername {
+            dropboxUsername = tokens.dropboxUsername
+            tokensUpdated = true
+        }
+        
+        // Load tokens
         if !tokens.remarkableToken.isEmpty && tokens.remarkableToken != remarkableDeviceToken {
             // Check if this is an 8-character registration code or a bearer token
             if tokens.remarkableToken.count == 8 {

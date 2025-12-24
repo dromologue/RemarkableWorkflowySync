@@ -344,20 +344,34 @@ final class SyncServiceTests: XCTestCase {
             parentId: nil
         )
         
+        let node1 = WorkflowyNode(
+            id: "workflowy-node-1",
+            name: "Test Node 1",
+            note: "Test note 1",
+            parentId: nil,
+            children: nil
+        )
+        
+        let node2 = WorkflowyNode(
+            id: "workflowy-node-2", 
+            name: "Test Node 2",
+            note: "Test note 2",
+            parentId: nil,
+            children: nil
+        )
+        
         return [
             SyncPair(
-                id: "pair-1",
                 remarkableDocument: document1,
-                workflowyNodeId: "workflowy-node-1",
+                workflowyNode: node1,
                 syncDirection: .remarkableToWorkflowy,
-                lastSyncDate: Date()
+                lastSynced: Date()
             ),
             SyncPair(
-                id: "pair-2",
                 remarkableDocument: document2,
-                workflowyNodeId: "workflowy-node-2",
+                workflowyNode: node2,
                 syncDirection: .bidirectional,
-                lastSyncDate: Date().addingTimeInterval(-3600) // 1 hour ago
+                lastSynced: Date().addingTimeInterval(-3600) // 1 hour ago
             )
         ]
     }

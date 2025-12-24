@@ -6,6 +6,9 @@ struct APITokenParser {
     private init() {}
     
     struct ParsedTokens {
+        let remarkableUsername: String
+        let workflowyUsername: String
+        let dropboxUsername: String
         let remarkableToken: String
         let workflowyApiKey: String
         let dropboxAccessToken: String
@@ -59,6 +62,9 @@ struct APITokenParser {
     }
     
     private func parseTokensFromContent(_ content: String) -> ParsedTokens? {
+        var remarkableUsername = ""
+        var workflowyUsername = ""
+        var dropboxUsername = ""
         var remarkableToken = ""
         var workflowyApiKey = ""
         var dropboxAccessToken = ""
@@ -68,6 +74,7 @@ struct APITokenParser {
         var currentSection = ""
         var inCodeBlock = false
         var currentToken = ""
+        var expectingUsernameNext = false
         
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespaces)
@@ -84,21 +91,43 @@ struct APITokenParser {
                 continue
             }
             
+            // Check for username sections
+            if trimmedLine.contains("**Username/Email:**") {
+                expectingUsernameNext = true
+                continue
+            }
+            
             // Handle code blocks
             if trimmedLine.hasPrefix("```") {
                 if inCodeBlock {
-                    // End of code block - save the token
-                    let token = currentToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !token.isEmpty && !token.hasPrefix("[") {
-                        switch currentSection {
-                        case "remarkable":
-                            remarkableToken = token
-                        case "workflowy":
-                            workflowyApiKey = token
-                        case "dropbox":
-                            dropboxAccessToken = token
-                        default:
-                            break
+                    // End of code block - save the token or username
+                    let content = currentToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !content.isEmpty && !content.hasPrefix("[") {
+                        if expectingUsernameNext {
+                            // This is a username
+                            switch currentSection {
+                            case "remarkable":
+                                remarkableUsername = content
+                            case "workflowy":
+                                workflowyUsername = content
+                            case "dropbox":
+                                dropboxUsername = content
+                            default:
+                                break
+                            }
+                            expectingUsernameNext = false
+                        } else {
+                            // This is a token
+                            switch currentSection {
+                            case "remarkable":
+                                remarkableToken = content
+                            case "workflowy":
+                                workflowyApiKey = content
+                            case "dropbox":
+                                dropboxAccessToken = content
+                            default:
+                                break
+                            }
                         }
                     }
                     currentToken = ""
@@ -121,6 +150,9 @@ struct APITokenParser {
         }
         
         return ParsedTokens(
+            remarkableUsername: remarkableUsername,
+            workflowyUsername: workflowyUsername,
+            dropboxUsername: dropboxUsername,
             remarkableToken: remarkableToken,
             workflowyApiKey: workflowyApiKey,
             dropboxAccessToken: dropboxAccessToken

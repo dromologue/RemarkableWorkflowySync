@@ -8,7 +8,7 @@ final class WorkflowyServiceTests: XCTestCase {
     let mockApiKey = "test-api-key-12345"
     
     override func setUpWithError() throws {
-        workflowyService = WorkflowyService(apiKey: mockApiKey)
+        workflowyService = WorkflowyService(apiKey: mockApiKey, username: "test-user@example.com")
     }
     
     override func tearDownWithError() throws {
@@ -27,7 +27,7 @@ final class WorkflowyServiceTests: XCTestCase {
     
     func testValidateConnectionWithInvalidResponse() async throws {
         // Given: Service with invalid API key
-        let invalidService = WorkflowyService(apiKey: "invalid-key")
+        let invalidService = WorkflowyService(apiKey: "invalid-key", username: "test-user@example.com")
         
         // When/Then: Connection validation should handle errors gracefully
         do {
@@ -235,9 +235,9 @@ final class WorkflowyServiceTests: XCTestCase {
     
     func testServiceInitialization() {
         // Test service initializes properly with different API keys
-        let emptyKeyService = WorkflowyService(apiKey: "")
-        let normalKeyService = WorkflowyService(apiKey: "test-key")
-        let longKeyService = WorkflowyService(apiKey: "very-long-api-key-with-many-characters-12345")
+        let emptyKeyService = WorkflowyService(apiKey: "", username: "test-user@example.com")
+        let normalKeyService = WorkflowyService(apiKey: "test-key", username: "test-user@example.com")
+        let longKeyService = WorkflowyService(apiKey: "very-long-api-key-with-many-characters-12345", username: "test-user@example.com")
         
         XCTAssertNotNil(emptyKeyService, "Service should initialize with empty key")
         XCTAssertNotNil(normalKeyService, "Service should initialize with normal key")

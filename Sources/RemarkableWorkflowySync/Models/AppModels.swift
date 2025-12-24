@@ -67,12 +67,32 @@ struct SyncPair: Identifiable, Codable {
 }
 
 struct AppSettings: Codable {
+    // User credentials
+    var remarkableUsername: String = ""
+    var workflowyUsername: String = ""
+    var dropboxUsername: String = ""
+    
+    // API tokens
     var remarkableDeviceToken: String = ""
     var workflowyApiKey: String = ""
     var dropboxAccessToken: String = ""
+    
+    // App settings
     var syncInterval: TimeInterval = 3600 // 1 hour
     var enableBackgroundSync: Bool = true
     var autoConvertToPDF: Bool = true
+    
+    init(remarkableUsername: String = "", workflowyUsername: String = "", dropboxUsername: String = "", remarkableDeviceToken: String = "", workflowyApiKey: String = "", dropboxAccessToken: String = "", syncInterval: TimeInterval = 3600, enableBackgroundSync: Bool = true, autoConvertToPDF: Bool = true) {
+        self.remarkableUsername = remarkableUsername
+        self.workflowyUsername = workflowyUsername
+        self.dropboxUsername = dropboxUsername
+        self.remarkableDeviceToken = remarkableDeviceToken
+        self.workflowyApiKey = workflowyApiKey
+        self.dropboxAccessToken = dropboxAccessToken
+        self.syncInterval = syncInterval
+        self.enableBackgroundSync = enableBackgroundSync
+        self.autoConvertToPDF = autoConvertToPDF
+    }
     
     private static let settingsURL = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)

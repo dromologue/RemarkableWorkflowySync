@@ -13,20 +13,24 @@ final class IntegrationTests: XCTestCase {
     var cancellables: Set<AnyCancellable>!
     
     override func setUpWithError() throws {
-        syncService = SyncService()
-        remarkableService = RemarkableService()
-        workflowyService = WorkflowyService(apiKey: "test-integration-key")
-        pdfGenerator = PDFGenerator()
-        cancellables = Set<AnyCancellable>()
+        Task { @MainActor in
+            syncService = SyncService()
+            remarkableService = RemarkableService()
+            workflowyService = WorkflowyService(apiKey: "test-integration-key", username: "test-user@example.com")
+            pdfGenerator = PDFGenerator()
+            cancellables = Set<AnyCancellable>()
+        }
     }
     
     override func tearDownWithError() throws {
-        syncService.stopBackgroundSync()
-        syncService = nil
-        remarkableService = nil
-        workflowyService = nil
-        pdfGenerator = nil
-        cancellables = nil
+        Task { @MainActor in
+            syncService.stopBackgroundSync()
+            syncService = nil
+            remarkableService = nil
+            workflowyService = nil
+            pdfGenerator = nil
+            cancellables = nil
+        }
     }
     
     // MARK: - Complete Workflow Integration Tests
@@ -253,14 +257,10 @@ final class IntegrationTests: XCTestCase {
         await withTaskGroup(of: Void.self) { group in
             for doc in docs {
                 group.addTask {
-                    await MainActor.run {
-                        Task {
-                            do {
-                                try await self.syncService.syncDocuments([doc], direction: .remarkableToWorkflowy)
-                            } catch {
-                                // Expected to fail, but should not crash
-                            }
-                        }
+                    do {
+                        try await self.syncService.syncDocuments([doc], direction: .remarkableToWorkflowy)
+                    } catch {
+                        // Expected to fail, but should not crash
                     }
                 }
             }

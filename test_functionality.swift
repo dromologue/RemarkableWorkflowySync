@@ -61,7 +61,7 @@ do {
     let remarkableService = RemarkableService()
     print("✅ RemarkableService initialized")
     
-    let workflowyService = WorkflowyService(apiKey: "test-key")
+    let workflowyService = WorkflowyService(apiKey: "test-key", username: "test-user@example.com")
     print("✅ WorkflowyService initialized")
     
     let dropboxService = DropboxService(accessToken: "test-token")

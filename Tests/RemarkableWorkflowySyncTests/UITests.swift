@@ -11,15 +11,20 @@ final class UITests: XCTestCase {
     var cancellables: Set<AnyCancellable>!
     
     override func setUpWithError() throws {
-        mainViewModel = MainViewModel()
-        settingsViewModel = SettingsViewModel()
-        cancellables = Set<AnyCancellable>()
+        // Initialize on MainActor but don't wait
+        Task { @MainActor in
+            mainViewModel = MainViewModel()
+            settingsViewModel = SettingsViewModel()
+            cancellables = Set<AnyCancellable>()
+        }
     }
     
     override func tearDownWithError() throws {
-        mainViewModel = nil
-        settingsViewModel = nil
-        cancellables = nil
+        Task { @MainActor in
+            mainViewModel = nil
+            settingsViewModel = nil
+            cancellables = nil
+        }
     }
     
     // MARK: - MainViewModel Tests

@@ -61,6 +61,7 @@ func testRemarkableRegistration() async {
 func testWorkflowyAPI() async {
     print("\n🌊 Testing Workflowy API...")
     
+    let username = "dromologue@gmail.com" // Your username
     let apiKey = "cf5a1fc04b7a17388d630d875a498e6aff6afda9" // Your API key
     
     let endpoints = [
@@ -81,6 +82,7 @@ func testWorkflowyAPI() async {
         
         do {
             print("🔄 Making request to: \(url)")
+            print("👤 Username: \(username)")
             print("🔑 API Key: \(apiKey.prefix(8))...")
             
             let (data, response) = try await URLSession.shared.data(for: request)

@@ -37,7 +37,7 @@ final class RemarkableWorkflowySyncTests: XCTestCase {
         let remarkableService = RemarkableService()
         XCTAssertNotNil(remarkableService)
         
-        let workflowyService = WorkflowyService(apiKey: "test")
+        let workflowyService = WorkflowyService(apiKey: "test", username: "test-user@example.com")
         XCTAssertNotNil(workflowyService)
         
         let dropboxService = DropboxService(accessToken: "test")
@@ -88,7 +88,7 @@ final class RemarkableWorkflowySyncTests: XCTestCase {
     // MARK: - Workflowy Integration Tests
     
     func testWorkflowyIntegrationFeatures() {
-        let service = WorkflowyService(apiKey: "test-key")
+        let service = WorkflowyService(apiKey: "test-key", username: "test-user@example.com")
         
         // Test beta endpoints configuration
         let endpoints = service.getBetaEndpoints()

@@ -14,7 +14,7 @@ final class ServiceTests: XCTestCase {
     }
     
     func testWorkflowyServiceInitialization() {
-        let service = WorkflowyService(apiKey: "test-api-key")
+        let service = WorkflowyService(apiKey: "test-api-key", username: "test-user@example.com")
         XCTAssertNotNil(service)
     }
     

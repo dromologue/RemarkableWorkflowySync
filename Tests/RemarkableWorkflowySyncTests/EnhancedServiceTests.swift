@@ -55,7 +55,7 @@ final class EnhancedServiceTests: XCTestCase {
     // MARK: - Workflowy Service Enhanced Tests
     
     func testWorkflowyRemarkableRootNodeCreation() async {
-        let service = WorkflowyService(apiKey: "test-api-key")
+        let service = WorkflowyService(apiKey: "test-api-key", username: "test-user@example.com")
         
         // Test that we can create a mock remarkable document
         let mockDocument = RemarkableDocument(
@@ -78,7 +78,7 @@ final class EnhancedServiceTests: XCTestCase {
     }
     
     func testWorkflowyNodeSearch() async {
-        let service = WorkflowyService(apiKey: "test-api-key")
+        let service = WorkflowyService(apiKey: "test-api-key", username: "test-user@example.com")
         
         // Create mock nodes for testing search
         let node1 = WorkflowyNode(id: "1", name: "Remarkable Document", note: "PDF file")
@@ -92,7 +92,7 @@ final class EnhancedServiceTests: XCTestCase {
     }
     
     func testWorkflowyBetaEndpoints() {
-        let service = WorkflowyService(apiKey: "test-api-key")
+        let service = WorkflowyService(apiKey: "test-api-key", username: "test-user@example.com")
         
         // Test that multiple endpoints are configured
         let endpoints = service.getBetaEndpoints()

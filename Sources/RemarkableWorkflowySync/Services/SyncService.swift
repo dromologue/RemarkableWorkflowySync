@@ -19,7 +19,7 @@ class SyncService: ObservableObject {
     
     init() {
         remarkableService = RemarkableService()
-        workflowyService = WorkflowyService(apiKey: settings.workflowyApiKey)
+        workflowyService = WorkflowyService(apiKey: settings.workflowyApiKey, username: settings.workflowyUsername.isEmpty ? nil : settings.workflowyUsername)
         dropboxService = DropboxService(accessToken: settings.dropboxAccessToken)
     }
     
@@ -284,7 +284,7 @@ class SyncService: ObservableObject {
         // Remarkable service manages its own authentication now
         
         if newSettings.workflowyApiKey != settings.workflowyApiKey {
-            workflowyService = WorkflowyService(apiKey: newSettings.workflowyApiKey)
+            workflowyService = WorkflowyService(apiKey: newSettings.workflowyApiKey, username: newSettings.workflowyUsername.isEmpty ? nil : newSettings.workflowyUsername)
         }
         
         if newSettings.dropboxAccessToken != settings.dropboxAccessToken {
