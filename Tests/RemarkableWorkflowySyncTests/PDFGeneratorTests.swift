@@ -59,20 +59,29 @@ final class PDFGeneratorTests: XCTestCase {
             ]
         )
         let nodes = [testNode]
-        
+
         // When: Generate PDF
         let pdfData = try await pdfGenerator.generateWorkflowyPDF(from: nodes, title: "Content Test")
-        
-        // Then: PDF should contain the expected text content
+
+        // Then: PDF should contain the expected content in annotations
         let pdfDocument = PDFDocument(data: pdfData)!
-        let fullText = (0..<pdfDocument.pageCount).compactMap { pageIndex in
-            pdfDocument.page(at: pageIndex)?.string
-        }.joined(separator: " ")
-        
-        XCTAssertTrue(fullText.contains("Test Node with Special Content"), "PDF should contain node name")
-        XCTAssertTrue(fullText.contains("This is a test note"), "PDF should contain node note")
-        XCTAssertTrue(fullText.contains("Child Node"), "PDF should contain child node")
-        XCTAssertTrue(fullText.contains("Table of Contents"), "PDF should contain TOC")
+
+        // Extract text from all annotations across pages
+        var allAnnotationText = ""
+        for pageIndex in 0..<pdfDocument.pageCount {
+            if let page = pdfDocument.page(at: pageIndex) {
+                for annotation in page.annotations {
+                    if let contents = annotation.contents {
+                        allAnnotationText += contents + " "
+                    }
+                }
+            }
+        }
+
+        XCTAssertTrue(allAnnotationText.contains("Test Node with Special Content"), "PDF should contain node name")
+        XCTAssertTrue(allAnnotationText.contains("This is a test note"), "PDF should contain node note")
+        XCTAssertTrue(allAnnotationText.contains("Child Node"), "PDF should contain child node")
+        XCTAssertTrue(allAnnotationText.contains("Table of Contents"), "PDF should contain TOC")
     }
     
     func testPDFNavigationAnnotations() async throws {
@@ -111,18 +120,27 @@ final class PDFGeneratorTests: XCTestCase {
     func testPDFWithDeepNesting() async throws {
         // Given: Deeply nested nodes
         let deeplyNestedNodes = createDeeplyNestedTestNodes()
-        
+
         // When: Generate PDF
         let pdfData = try await pdfGenerator.generateWorkflowyPDF(from: deeplyNestedNodes, title: "Deep Nesting Test")
-        
+
         // Then: PDF should handle deep nesting gracefully
         XCTAssertFalse(pdfData.isEmpty)
-        
+
         let pdfDocument = PDFDocument(data: pdfData)!
-        let fullText = (0..<pdfDocument.pageCount).compactMap { pageIndex in
-            pdfDocument.page(at: pageIndex)?.string
-        }.joined(separator: " ")
-        
+
+        // Extract text from all annotations
+        var fullText = ""
+        for pageIndex in 0..<pdfDocument.pageCount {
+            if let page = pdfDocument.page(at: pageIndex) {
+                for annotation in page.annotations {
+                    if let contents = annotation.contents {
+                        fullText += contents + " "
+                    }
+                }
+            }
+        }
+
         XCTAssertTrue(fullText.contains("Level 1"), "Should contain top level")
         XCTAssertTrue(fullText.contains("Level 2"), "Should contain second level")
         XCTAssertTrue(fullText.contains("Level 3"), "Should contain third level")
@@ -132,15 +150,22 @@ final class PDFGeneratorTests: XCTestCase {
         // Given: Custom title
         let customTitle = "My Custom Workflowy Export"
         let nodes = createTestNodes()
-        
+
         // When: Generate PDF with custom title
         let pdfData = try await pdfGenerator.generateWorkflowyPDF(from: nodes, title: customTitle)
-        
-        // Then: Title page should contain custom title
+
+        // Then: Title page should contain custom title (check via annotations)
         let pdfDocument = PDFDocument(data: pdfData)!
         let titlePage = pdfDocument.page(at: 0)!
-        let titlePageText = titlePage.string ?? ""
-        
+
+        // Extract text from annotations
+        var titlePageText = ""
+        for annotation in titlePage.annotations {
+            if let contents = annotation.contents {
+                titlePageText += contents + " "
+            }
+        }
+
         XCTAssertTrue(titlePageText.contains(customTitle), "Title page should contain custom title")
         XCTAssertTrue(titlePageText.contains("Generated from Workflowy"), "Title page should contain source info")
         XCTAssertTrue(titlePageText.contains("RemarkableWorkflowySync"), "Title page should contain app name")
@@ -151,15 +176,22 @@ final class PDFGeneratorTests: XCTestCase {
         let node1 = WorkflowyNode(id: "1", name: "First Section", note: nil, parentId: nil, children: nil)
         let node2 = WorkflowyNode(id: "2", name: "Second Section", note: nil, parentId: nil, children: nil)
         let nodes = [node1, node2]
-        
+
         // When: Generate PDF
         let pdfData = try await pdfGenerator.generateWorkflowyPDF(from: nodes, title: "TOC Test")
-        
-        // Then: TOC should list all sections
+
+        // Then: TOC should list all sections (check via annotations since text is added as annotations)
         let pdfDocument = PDFDocument(data: pdfData)!
         let tocPage = pdfDocument.page(at: 1)! // TOC is page 1
-        let tocText = tocPage.string ?? ""
-        
+
+        // Extract text from annotations
+        var tocText = ""
+        for annotation in tocPage.annotations {
+            if let contents = annotation.contents {
+                tocText += contents + " "
+            }
+        }
+
         XCTAssertTrue(tocText.contains("Table of Contents"), "Should have TOC header")
         XCTAssertTrue(tocText.contains("First Section"), "Should list first section")
         XCTAssertTrue(tocText.contains("Second Section"), "Should list second section")

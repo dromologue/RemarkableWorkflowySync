@@ -4,19 +4,21 @@ import Combine
 
 @MainActor
 final class SyncServiceTests: XCTestCase {
-    
-    var syncService: SyncService!
-    var cancellables: Set<AnyCancellable>!
-    
-    override func setUpWithError() throws {
+
+    nonisolated(unsafe) var syncService: SyncService!
+    nonisolated(unsafe) var cancellables: Set<AnyCancellable>!
+
+    override func setUp() async throws {
+        try await super.setUp()
         syncService = SyncService()
         cancellables = Set<AnyCancellable>()
     }
-    
-    override func tearDownWithError() throws {
+
+    override func tearDown() async throws {
         syncService.stopBackgroundSync()
         syncService = nil
         cancellables = nil
+        try await super.tearDown()
     }
     
     // MARK: - Basic Sync Service Tests
@@ -246,8 +248,8 @@ final class SyncServiceTests: XCTestCase {
     
     func testSyncStatusDeferredReset() async throws {
         // Given: Sync operation that will change status
-        let initialStatus = syncService.syncStatus
-        
+        _ = syncService.syncStatus
+
         // When: Running sync operation
         do {
             try await syncService.syncCompleteWorkflowyOutline()

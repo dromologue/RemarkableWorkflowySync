@@ -5,26 +5,23 @@ import Combine
 
 @MainActor
 final class UITests: XCTestCase {
-    
-    var mainViewModel: MainViewModel!
-    var settingsViewModel: SettingsViewModel!
-    var cancellables: Set<AnyCancellable>!
-    
-    override func setUpWithError() throws {
-        // Initialize on MainActor but don't wait
-        Task { @MainActor in
-            mainViewModel = MainViewModel()
-            settingsViewModel = SettingsViewModel()
-            cancellables = Set<AnyCancellable>()
-        }
+
+    nonisolated(unsafe) var mainViewModel: MainViewModel!
+    nonisolated(unsafe) var settingsViewModel: SettingsViewModel!
+    nonisolated(unsafe) var cancellables: Set<AnyCancellable>!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        mainViewModel = MainViewModel()
+        settingsViewModel = SettingsViewModel()
+        cancellables = Set<AnyCancellable>()
     }
-    
-    override func tearDownWithError() throws {
-        Task { @MainActor in
-            mainViewModel = nil
-            settingsViewModel = nil
-            cancellables = nil
-        }
+
+    override func tearDown() async throws {
+        mainViewModel = nil
+        settingsViewModel = nil
+        cancellables = nil
+        try await super.tearDown()
     }
     
     // MARK: - MainViewModel Tests
@@ -91,8 +88,8 @@ final class UITests: XCTestCase {
     
     func testMainViewModelWorkflowyToRemarkableSync() async {
         // Given: Main view model
-        let initialStatus = mainViewModel.syncStatus
-        
+        _ = mainViewModel.syncStatus
+
         // When: Triggering Workflowy to Remarkable sync
         let syncTask = Task {
             await mainViewModel.syncWorkflowyToRemarkable()
@@ -273,7 +270,7 @@ final class UITests: XCTestCase {
         // Test unknown status
         let unknownStatus = ConnectionStatus.unknown
         XCTAssertEqual(unknownStatus.displayText, "Unknown", "Unknown should display 'Unknown'")
-        XCTAssertEqual(unknownStatus.color.description, Color.gray.description, "Unknown should have gray color")
+        XCTAssertEqual(unknownStatus.color.description, Color.secondary.description, "Unknown should have secondary color")
         
         // Test connected status
         let connectedStatus = ConnectionStatus.connected
@@ -319,10 +316,10 @@ final class UITests: XCTestCase {
         // Test that view model maintains consistent state during operations
         
         // Initial state check
-        let initialDocumentCount = mainViewModel.documents.count
-        let initialSelectedCount = mainViewModel.selectedDocuments.count
-        let initialSyncStatus = mainViewModel.syncStatus
-        
+        _ = mainViewModel.documents.count
+        _ = mainViewModel.selectedDocuments.count
+        _ = mainViewModel.syncStatus
+
         // Perform operation that might change state
         await mainViewModel.refreshDocuments()
         

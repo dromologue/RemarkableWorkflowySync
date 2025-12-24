@@ -71,8 +71,8 @@ final class PDFGenerator: @unchecked Sendable {
         let titleText = NSMutableAttributedString()
         titleText.append(NSAttributedString(string: "📊 " + title + "\n\n", attributes: titleAttributes))
         titleText.append(NSAttributedString(string: "Generated from Workflowy\n", attributes: subtitleAttributes))
-        titleText.append(NSAttributedString(string: "Date: \\(Date().formatted(.dateTime.day().month().year()))\n", attributes: subtitleAttributes))
-        titleText.append(NSAttributedString(string: "Total sections: \\(nodeCount)\n\n", attributes: subtitleAttributes))
+        titleText.append(NSAttributedString(string: "Date: \(Date().formatted(.dateTime.day().month().year()))\n", attributes: subtitleAttributes))
+        titleText.append(NSAttributedString(string: "Total sections: \(nodeCount)\n\n", attributes: subtitleAttributes))
         titleText.append(NSAttributedString(string: "🚀 Synced via RemarkableWorkflowySync", attributes: subtitleAttributes))
         
         let titleRect = CGRect(
@@ -112,13 +112,13 @@ final class PDFGenerator: @unchecked Sendable {
         
         for (index, node) in nodes.enumerated() {
             let pageNumber = index + 3 // Title page + TOC page + content starts at page 3
-            let entry = "\\(index + 1). \\(node.name) .......................... \\(pageNumber)\n"
+            let entry = "\(index + 1). \(node.name) .......................... \(pageNumber)\n"
             tocText.append(NSAttributedString(string: entry, attributes: entryAttributes))
-            
+
             // Add children if they exist
             if let children = node.children {
-                for (_, child) in children.enumerated() {
-                    let childEntry = "   \\(index + 1).\\(childIndex + 1) \\(child.name)\n"
+                for (childIndex, child) in children.enumerated() {
+                    let childEntry = "   \(index + 1).\(childIndex + 1) \(child.name)\n"
                     tocText.append(NSAttributedString(string: childEntry, attributes: entryAttributes))
                 }
             }
@@ -151,33 +151,33 @@ final class PDFGenerator: @unchecked Sendable {
             .font: NSFont.boldSystemFont(ofSize: 18),
             .foregroundColor: NSColor.black
         ]
-        contentText.append(NSAttributedString(string: "\\(nodeIndex). \\(node.name)\n\n", attributes: headerAttributes))
-        
+        contentText.append(NSAttributedString(string: "\(nodeIndex). \(node.name)\n\n", attributes: headerAttributes))
+
         // Note content
         if let note = node.note, !note.isEmpty {
             let noteAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 11),
                 .foregroundColor: NSColor.darkGray
             ]
-            contentText.append(NSAttributedString(string: "\\(note)\n\n", attributes: noteAttributes))
+            contentText.append(NSAttributedString(string: "\(note)\n\n", attributes: noteAttributes))
         }
-        
+
         // Children content
         if let children = node.children {
             let childAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12),
                 .foregroundColor: NSColor.black
             ]
-            
-            for (_, child) in children.enumerated() {
-                contentText.append(NSAttributedString(string: "• \\(child.name)\n", attributes: childAttributes))
-                
+
+            for child in children {
+                contentText.append(NSAttributedString(string: "• \(child.name)\n", attributes: childAttributes))
+
                 if let childNote = child.note, !childNote.isEmpty {
                     let childNoteAttributes: [NSAttributedString.Key: Any] = [
                         .font: NSFont.systemFont(ofSize: 10),
                         .foregroundColor: NSColor.gray
                     ]
-                    contentText.append(NSAttributedString(string: "  \\(childNote)\n", attributes: childNoteAttributes))
+                    contentText.append(NSAttributedString(string: "  \(childNote)\n", attributes: childNoteAttributes))
                 }
                 
                 // Recursively add nested children
@@ -217,23 +217,23 @@ final class PDFGenerator: @unchecked Sendable {
     
     private func addNestedChildren(_ children: [WorkflowyNode], to attributedString: NSMutableAttributedString, level: Int) {
         let indent = String(repeating: "  ", count: level)
-        
+
         let childAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: CGFloat(max(8, 12 - level))),
             .foregroundColor: NSColor.black
         ]
-        
+
         for child in children {
-            attributedString.append(NSAttributedString(string: "\\(indent)• \\(child.name)\n", attributes: childAttributes))
-            
+            attributedString.append(NSAttributedString(string: "\(indent)• \(child.name)\n", attributes: childAttributes))
+
             if let note = child.note, !note.isEmpty {
                 let noteAttributes: [NSAttributedString.Key: Any] = [
                     .font: NSFont.systemFont(ofSize: CGFloat(max(7, 10 - level))),
                     .foregroundColor: NSColor.gray
                 ]
-                attributedString.append(NSAttributedString(string: "\\(indent)  \\(note)\n", attributes: noteAttributes))
+                attributedString.append(NSAttributedString(string: "\(indent)  \(note)\n", attributes: noteAttributes))
             }
-            
+
             if let grandchildren = child.children {
                 addNestedChildren(grandchildren, to: attributedString, level: level + 1)
             }
