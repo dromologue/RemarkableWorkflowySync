@@ -12,4 +12,15 @@ api-tokens.md
 *.env
 .env*
 secrets.md
+secrets.json
 config.json
+credentials.*
+*.pem
+*.key
+*.p12
+*.pfx
+.remarkable-token
+*-token
+*-token.txt
+tokens.md
+tokens.json

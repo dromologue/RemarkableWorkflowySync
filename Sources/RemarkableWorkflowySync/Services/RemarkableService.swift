@@ -4,19 +4,39 @@ import SwiftyJSON
 import Crypto
 
 final class RemarkableService: ObservableObject, @unchecked Sendable {
-    private var deviceToken: String?
     private var bearerToken: String?
     private var storageHost: String?
-    
+
     // API Endpoints
     private let authURL = "https://webapp-production-dot-remarkable-production.appspot.com"
     private let serviceDiscoveryURL = "https://service-manager-production-dot-remarkable-production.appspot.com"
     private let defaultStorageURL = "https://document-storage-production-dot-remarkable-production.appspot.com"
-    
-    init(deviceToken: String? = nil) {
-        self.deviceToken = deviceToken
-        // Try to load saved bearer token
-        self.bearerToken = loadSavedToken()
+
+    /// Initialize with an optional bearer token
+    /// - Parameter bearerToken: The bearer token from a previous registration. If nil, will try to load from:
+    ///   1. AppSettings (remarkableDeviceToken)
+    ///   2. Local file storage (~/.remarkable-token)
+    init(bearerToken: String? = nil) {
+        if let token = bearerToken, !token.isEmpty {
+            self.bearerToken = token
+        } else {
+            // Try to load from AppSettings first, then from file
+            let settings = AppSettings.load()
+            if !settings.remarkableDeviceToken.isEmpty && settings.remarkableDeviceToken.count > 8 {
+                // This is a bearer token (not an 8-char registration code)
+                self.bearerToken = settings.remarkableDeviceToken
+            } else {
+                // Fallback to file-based token storage
+                self.bearerToken = loadSavedToken()
+            }
+        }
+    }
+
+    /// Check if we have a valid bearer token (not a registration code)
+    var hasBearerToken: Bool {
+        guard let token = bearerToken else { return false }
+        // Bearer tokens are JWT-like and much longer than 8 characters
+        return token.count > 8
     }
     
     /// Register a new device with an 8-character code from my.remarkable.com
@@ -55,13 +75,14 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
                 }
                 
                 print("✅ Registration successful, token received")
-                
+
                 self.bearerToken = tokenString
                 saveToken(tokenString)
-                
+                saveBearerTokenToSettings(tokenString)
+
                 // Discover storage endpoint after registration
                 try await discoverStorageEndpoint()
-                
+
                 return tokenString
             } else {
                 // Fallback: try parsing as JSON
@@ -69,9 +90,10 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
                 
                 if let token = json["token"].string ?? json["bearerToken"].string ?? json.string {
                     print("✅ Registration successful via JSON, token received")
-                    
+
                     self.bearerToken = token
                     saveToken(token)
+                    saveBearerTokenToSettings(token)
                     try await discoverStorageEndpoint()
                     return token
                 }
@@ -548,15 +570,23 @@ final class RemarkableService: ObservableObject, @unchecked Sendable {
         let tokenPath = getTokenPath()
         try? token.write(to: tokenPath, atomically: true, encoding: .utf8)
     }
-    
+
     private func loadSavedToken() -> String? {
         let tokenPath = getTokenPath()
         return try? String(contentsOf: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
+
     private func getTokenPath() -> URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return documentsPath.appendingPathComponent(".remarkable-token")
+    }
+
+    /// Save the bearer token to AppSettings for persistence across app launches
+    private func saveBearerTokenToSettings(_ token: String) {
+        var settings = AppSettings.load()
+        settings.remarkableDeviceToken = token
+        settings.save()
+        print("📝 Bearer token saved to AppSettings")
     }
 }
 

@@ -18,7 +18,8 @@ class SyncService: ObservableObject {
     private let pdfGenerator = PDFGenerator()
     
     init() {
-        remarkableService = RemarkableService()
+        // Pass the bearer token from settings to RemarkableService
+        remarkableService = RemarkableService(bearerToken: settings.remarkableDeviceToken)
         workflowyService = WorkflowyService(apiKey: settings.workflowyApiKey, username: settings.workflowyUsername.isEmpty ? nil : settings.workflowyUsername)
         dropboxService = DropboxService(accessToken: settings.dropboxAccessToken)
     }
@@ -284,16 +285,19 @@ class SyncService: ObservableObject {
     }
     
     func updateSettings(_ newSettings: AppSettings) {
-        // Remarkable service manages its own authentication now
-        
+        // Update RemarkableService with new bearer token if changed
+        if newSettings.remarkableDeviceToken != settings.remarkableDeviceToken {
+            remarkableService = RemarkableService(bearerToken: newSettings.remarkableDeviceToken)
+        }
+
         if newSettings.workflowyApiKey != settings.workflowyApiKey {
             workflowyService = WorkflowyService(apiKey: newSettings.workflowyApiKey, username: newSettings.workflowyUsername.isEmpty ? nil : newSettings.workflowyUsername)
         }
-        
+
         if newSettings.dropboxAccessToken != settings.dropboxAccessToken {
             dropboxService = DropboxService(accessToken: newSettings.dropboxAccessToken)
         }
-        
+
         if isRunning && newSettings.syncInterval != settings.syncInterval {
             stopBackgroundSync()
             startBackgroundSync()

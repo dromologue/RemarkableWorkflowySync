@@ -50,9 +50,10 @@ class MainViewModel: ObservableObject {
     func refreshDocuments() async {
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let remarkableService = RemarkableService()
+            // RemarkableService will automatically load bearer token from AppSettings
+            let remarkableService = RemarkableService(bearerToken: settings.remarkableDeviceToken)
             documents = try await remarkableService.fetchDocuments()
         } catch {
             print("Failed to load documents: \(error)")
@@ -133,21 +134,27 @@ class MainViewModel: ObservableObject {
             remarkableConnectionStatus = .failed("No device token")
             return
         }
-        
+
+        // Check if we have a bearer token (not just a registration code)
+        guard settings.remarkableDeviceToken.count > 8 else {
+            remarkableConnectionStatus = .failed("Registration code found. Please register to get a bearer token.")
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
-            let remarkableService = RemarkableService()
-            
+            let remarkableService = RemarkableService(bearerToken: settings.remarkableDeviceToken)
+
             // Test connection first
             let isConnected = try await remarkableService.validateConnection()
             if isConnected {
                 remarkableConnectionStatus = .connected
-                
+
                 // Fetch folder structure
                 remarkableFolders = try await remarkableService.fetchFolderStructure()
-                
+
                 print("✅ Loaded Remarkable folder structure with \(remarkableFolders.count) root folders")
             } else {
                 remarkableConnectionStatus = .failed("Connection failed")
@@ -262,17 +269,24 @@ class SettingsViewModel: ObservableObject {
             remarkableConnectionStatus = .failed("Please register device first using the registration code")
             return
         }
-        
+
         guard !remarkableDeviceToken.isEmpty else {
             remarkableConnectionStatus = .failed("No bearer token available. Please register device first.")
             return
         }
-        
+
+        // Check if we have a registration code (8 chars) instead of a bearer token
+        if remarkableDeviceToken.count == 8 {
+            remarkableConnectionStatus = .failed("You have a registration code, not a bearer token. Please register first.")
+            return
+        }
+
         isTestingConnection = true
         defer { isTestingConnection = false }
-        
+
         do {
-            let service = RemarkableService()
+            // Pass the bearer token explicitly
+            let service = RemarkableService(bearerToken: remarkableDeviceToken)
             let isValid = try await service.validateConnection()
             remarkableConnectionStatus = isValid ? .connected : .failed("Authentication failed")
         } catch {
